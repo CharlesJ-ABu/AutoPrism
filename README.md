@@ -1,126 +1,93 @@
-# AutoPrism 🌍
+# AutoPrism V2
 
-![AutoPrism Banner](https://img.shields.io/badge/AutoPrism-Global%20Intelligence%20Dashboard-8B5CF6?style=for-the-badge)
+AutoPrism V2 是一个 local-first、证据优先的产业研究面板平台。它把原始
+网页、PDF、CSV/Excel、RSS 与公开 API 保存为不可变历史快照，再按冻结的
+JSON Schema 形成结构化数据。核心数值可以回到原始文件、来源 URL、抓取时间
+和精确定位器，并由代码完成计算与误差检查。
 
-AutoPrism 是一款专为汽车产业与投资领域打造的**实时产业情报与全局数据看板**。
+当前分支策略：
 
-<div align="center">
-  <img src="assets/main.jpg" alt="AutoPrism 全局指挥中心概览" width="100%">
-  <br>
-  <em>AutoPrism 全局指挥中心概览</em>
-</div>
-<br>
-<div align="center">
-  <img src="assets/data-panel.jpg" alt="AutoPrism 数据面板与 AI 洞察流" width="100%">
-  <br>
-  <em>AutoPrism 结构化数据大盘与 AI 洞察流</em>
-</div>
-<br>
+- `main`：冻结的 V1 本地版。
+- `v2`：本仓库当前开发线，本地/内网/Docker Compose 可运行。
+- `saas`：长期独立版本；认证、RBAC、组织隔离、加密凭证库和对象存储在该分支建设。
 
-系统的核心护城河不在于“信息获取的数量”，而在于**“极致的结构化和降噪能力”**。AutoPrism 能够快速将全球新闻、供应链异动和竞品参数转化为直观的 3D 地图光柱、2D 战术热力图以及关键决策点，直击企业高管与投研机构的核心痛点。
+## 已实现
 
----
+- 内容寻址原始文件存储（SHA-256）和不可变来源快照。
+- HTML、RSS、PDF、CSV、XLSX、JSON API 解析及可重现定位器。
+- Redis 采集队列与独立 Worker。
+- 来源池、可信度、主题权威度、抓取策略和人工处理队列。
+- 冻结的主面板/子面板版本、JSON Schema、UI DSL、组件源码哈希、
+  提示词版本和模型设置。
+- OpenAI-compatible 与 Google Gemini 的供应商无关模型适配器。
+- 确定性 JSON 映射、Schema 校验、数值核算、交叉验证和审核记录。
+- 证据审计 UI：原始来源、JSON Pointer、抓取时间、文件/文本哈希及原始文件下载。
+- 三个真实 NHTSA 汽车面板，默认展示品牌、Tesla 2024 车型和安全评级车型。
 
-## ✨ 核心特性 (Core Features)
+## 快速启动
 
-- **🌍 双地图态势感知引擎 (Dual Map Engine)**
-  - **宏观战略视角 (Globe View)**：基于 `globe.gl` 渲染的 3D 旋转地球，直观展示全球供应链断裂、地缘危机冲击节点。
-  - **微观战术视角 (Tactical View)**：基于 `deck.gl` 的高性能 2D 散点图，轻松承载百万级别的终端销量数据和经销网络。
-- **🧠 云端 AI 降噪管线 (AI Denoising Pipeline)**
-  - 利用顶级云端大模型 (如 GPT-4o) 过滤全网海量公关稿和噪音。
-  - **全自动坐标映射**：将非结构化新闻（如“德国工厂停产”）提炼为高危预警，并自动计算得出其实际物理经纬度坐标，直接点亮前端地图。
-- **📊 动态车型对标库 (Dynamic Benchmarking)**
-  - 采用 PostgreSQL `JSONB` 结构灵活存储行业内日新月异的技术指标（如端到端智驾算力、电池形态），告别死板的列式数据库。
+要求 Docker Desktop。API Key 是可选项；三个内置汽车面板不需要大模型。
 
----
-
-## 🛠 技术栈 (Tech Stack)
-
-### 前端 (Frontend)
-* **框架**: React 18 + Vite + TypeScript
-* **样式**: Tailwind CSS (定制化 `autoprism` 深色指挥中心主题)
-* **渲染引擎**: `globe.gl` (Three.js), `deck.gl` (WebGL), `ECharts`
-* **状态管理**: `Zustand`
-* **交互**: `Framer Motion`, `@dnd-kit/core`
-
-### 后端 (Backend)
-* **框架**: Python 3.11+ + FastAPI
-* **数据库**: PostgreSQL 16 + `asyncpg` (SQLAlchemy 2.0 ORM)
-* **智能调度**: `httpx` (异步大模型 API 调用) + 后台轮询任务队列
-
----
-
-## 🚀 快速开始 (Getting Started)
-
-### 1. 配置云端 AI API (极其重要)
-系统依赖大模型进行降噪和提取坐标。请在 `backend/.env` 中配置您的 API 密钥：
 ```bash
-# 复制示例配置文件
-cd backend
-cp .env.example .env
-
-# 在 .env 中填入您的模型配置
-AI_API_BASE="https://api.openai.com/v1"  # 或使用百炼/Moonshot等其他兼容平台
-AI_API_KEY="sk-xxxxxxxxxxxxxxxxxxx"      # 您的 API 密钥
-AI_MODEL="gpt-4o"                        # 推荐使用 GPT-4o 或顶级国产大模型
+cp backend/.env.example backend/.env
+docker compose up -d --build
+docker compose exec web python -m app.seeds.automotive --collect
 ```
 
-### 2. 体验 AI 降噪与提取魔法 (本地脚本测试)
-无需启动庞大的数据库，您可以直接运行测试脚本，亲眼目睹一段纯文本新闻是如何被“榨干”出坐标和风险权重的：
-```bash
-cd backend
-python test_ai_pipeline.py
+访问：
+
+- 前端：[http://localhost:5173](http://localhost:5173)
+- API 文档：[http://localhost:8000/docs](http://localhost:8000/docs)
+- 健康检查：[http://localhost:8000/health](http://localhost:8000/health)
+- 就绪检查：[http://localhost:8000/ready](http://localhost:8000/ready)
+
+端口固定为前端 `5173`、后端 `8000`、PostgreSQL `5432`、Redis `6379`。
+
+## 模型配置
+
+`backend/.env` 只供本机使用且被 Git 忽略：
+
+```dotenv
+AI_PROVIDER=openai-compatible
+AI_API_BASE=https://api.openai.com/v1
+AI_API_KEY=
+AI_MODEL=gpt-4o
 ```
-*您将会在终端看到大模型返回的结构化 JSON，包含了提取出的经纬度 `{lat: 52.5, lng: 13.4}`。*
 
-### 3. 启动完整的后端服务 (API + 数据库)
-如果您希望本地调试完整的前后端数据流，需要先启动 Docker 和 FastAPI：
-1. 请确保您本地的 **Docker Desktop** 已经启动。
-2. 在 `AutoPrism` 根目录下启动数据库容器：
-   ```bash
-   docker-compose up -d
-   ```
-3. 进入 `backend` 目录，安装依赖并启动后端：
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-   ```
-   *后端启动后，您可以通过 `http://localhost:8001/docs` 查看 Swagger 接口文档。*
+也可在“新建主面板”中临时提供供应商、模型、Base URL 和 API Key。临时 Key
+只用于该次设计请求，不会写入面板版本。SaaS 的组织级加密凭证库尚未在 V2 实现。
 
-### 4. 启动前端双地图大屏
-确保您已安装 Node.js 环境：
+## 数据语义
+
+- **L1**：原始文件、HTTP 元数据、不可变快照和定位片段。
+- **INFO**：绑定到面板 Schema 版本的结构化观察值。
+- **L2**：只分析数据库中合格 L1/INFO 的战略洞察，不自行浏览或补充事实。
+- **legacy_unverified**：V1 遗留数据，保留但默认不进入可信计算与 L2。
+
+错误值不覆盖。修订创建新观察值，并用 `supersedes_id` 指向被替代版本。
+
+## 测试
+
 ```bash
+# 前端类型检查与生产构建
 cd frontend
-npm install --legacy-peer-deps
-npm run dev
-```
-打开浏览器访问 `http://localhost:5173`，点击面板右上角的切换按钮，即可在 3D 地球与 2D 战术视图间无缝切换！
+npm ci
+npm run build
 
----
+# 后端快速测试
+docker compose exec -T web python -m unittest discover -s tests -v
 
-## 📂 目录结构 (Project Structure)
-```text
-AutoPrism/
-├── Architecture.md         # 系统整体技术架构设计方案
-├── PRD.md                  # 产品需求文档
-├── README.md               # 本文件
-├── frontend/               # React + Vite 前端代码库
-│   ├── src/components/maps # 核心地图渲染组件 (GlobeMap, DeckGLMap)
-│   └── tailwind.config.js  # 指挥中心样式配置
-└── backend/                # Python + FastAPI 后端代码库
-    ├── app/models/sql.py   # 核心数据库漏斗模型 (RawIntelligence -> StructuredSignal)
-    ├── app/services/ai_service.py # AI 降噪清洗引擎管线
-    └── test_ai_pipeline.py # AI 提炼测试脚本
+# 完整数据库集成测试（必须使用一次性数据库）
+docker compose exec -T \
+  -e AUTOPRISM_RUN_DB_TESTS=1 \
+  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_migration \
+  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_migration \
+  web python -m unittest discover -s tests -v
+
+# 迁移漂移检查
+docker compose exec -T web alembic check
 ```
 
----
-
-## ☕️ 赞赏与支持 (Support)
-
-如果这个项目对你有帮助，欢迎通过微信赞赏码请我喝杯咖啡！你的支持是我持续开源和更新的动力。
-
-<img src="./assets/wechat-reward.jpg" alt="WeChat Reward" width="300" />
-
----
-*AutoPrism - Turning Chaos Into Clarity.*
+详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
+[安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和
+[待办](docs/V2_TODO.md)。

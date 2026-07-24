@@ -24,7 +24,7 @@ The V2 implementation order is:
 5. isolated custom visualization templates.
 
 Browser automation and authenticated Playwright collection are explicitly
-deferred. The initial collectors target HTML, PDF, CSV/Excel, and RSS.
+deferred. Current collectors target HTML, PDF, CSV/Excel, RSS, and JSON APIs.
 
 ## Data levels
 
@@ -51,7 +51,10 @@ Source
 ```
 
 Corrections never overwrite observations. A correction creates a new
-observation whose `supersedes_id` points at the previous observation.
+observation whose `supersedes_id` points at the previous observation and an
+`ObservationRevision` audit record captures the reason and actor. ORM guards
+reject accidental mutation in application code, while PostgreSQL triggers
+reject direct `UPDATE` and `DELETE` operations on evidence and version tables.
 
 ## Trust rules
 
@@ -99,3 +102,34 @@ task and creates a human-action request.
 - Test coverage for the evidence chain and Docker-based local startup.
 - At least three automotive panels running on real end-to-end data.
 
+This milestone is complete on `v2`. The reference dashboard uses three NHTSA
+public APIs. Every response is retained as an artifact, represented by a root
+JSON Pointer, mapped deterministically, validated against a frozen schema, and
+shown through the provenance UI.
+
+## Runtime topology
+
+```text
+Browser :5173
+  -> Nginx frontend
+       -> FastAPI :8000
+            -> PostgreSQL :5432
+            -> Redis :6379 -> independent Worker
+            -> content-addressed artifact volume
+```
+
+FastAPI serves V2 only. V1 runtime code remains available from the frozen
+`main` branch; V1 database tables are preserved during Alembic comparison and
+classified as legacy data.
+
+## Dynamic dashboard contract
+
+A saved `DashboardVersion` is append-only. Its child `PanelVersion` freezes:
+
+- JSON Schema plus AutoPrism time, geography, aggregation, and visualization metadata;
+- safe UI DSL, or custom React source and its SHA-256;
+- extraction instructions, prompt version, model settings, and source-pool binding.
+
+The current UI renders the safe `metric`, `table`, and `provenance` subset.
+Custom React source can be stored but isolated compilation and runtime remain a
+documented follow-up.

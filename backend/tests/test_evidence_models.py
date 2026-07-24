@@ -7,6 +7,7 @@ from app.models.evidence import (
     EvidenceArtifact,
     EvidenceFragment,
     MetricObservation,
+    ObservationRevision,
     ReviewCase,
     ReviewDecision,
     SourceSnapshot,
@@ -22,6 +23,7 @@ class EvidenceModelContractTests(unittest.TestCase):
             SourceSnapshot,
             EvidenceFragment,
             MetricObservation,
+            ObservationRevision,
             CalculationRun,
             ValidationRun,
             ReviewCase,
@@ -39,8 +41,11 @@ class EvidenceModelContractTests(unittest.TestCase):
     def test_corrections_and_decisions_have_supersession_links(self):
         self.assertIn("supersedes_id", MetricObservation.__table__.columns)
         self.assertIn("supersedes_id", ReviewDecision.__table__.columns)
+        self.assertIn(
+            "replacement_observation_id",
+            ObservationRevision.__table__.columns,
+        )
 
 
 if __name__ == "__main__":
     unittest.main()
-

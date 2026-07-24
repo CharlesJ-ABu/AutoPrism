@@ -40,7 +40,7 @@ class RawIntelligence(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     raw_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    status: Mapped[IntelligenceStatus] = mapped_column(Enum(IntelligenceStatus), default=IntelligenceStatus.PENDING_AI, index=True)
+    status: Mapped[IntelligenceStatus] = mapped_column(Enum(IntelligenceStatus), default=IntelligenceStatus.PENDING_AI)
     target_panel_ids: Mapped[List[str]] = mapped_column(JSONB, default=list) # Tagging which panel this raw data belongs to
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     
@@ -172,7 +172,7 @@ class StrategicInsight(Base):
     __tablename__ = "strategic_insights"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    role: Mapped[str] = mapped_column(String(50), index=True) # 所属角色 (Macro, SupplyChain 等)
+    role: Mapped[str] = mapped_column(String(50)) # 所属角色 (Macro, SupplyChain 等)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[str] = mapped_column(Text)
     

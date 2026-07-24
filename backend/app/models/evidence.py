@@ -80,6 +80,12 @@ class SourceSnapshot(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    source_definition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("source_definitions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     source_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
     artifact_id: Mapped[uuid.UUID] = mapped_column(
@@ -108,7 +114,7 @@ class SourceSnapshot(Base):
     __table_args__ = (
         Index("idx_source_snapshot_url_retrieved", "canonical_url", "retrieved_at"),
         UniqueConstraint(
-            "source_key",
+            "source_definition_id",
             "retrieved_at",
             "artifact_id",
             name="uq_source_snapshot_capture",
@@ -206,6 +212,32 @@ class MetricObservation(Base):
             "observed_at",
         ),
     )
+
+
+class ObservationRevision(Base):
+    """Auditable explanation of one immutable observation replacement."""
+
+    __tablename__ = "observation_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    original_observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    replacement_observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    revised_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class CalculationRun(Base):
@@ -324,6 +356,7 @@ for _immutable_model in (
     SourceSnapshot,
     EvidenceFragment,
     MetricObservation,
+    ObservationRevision,
     CalculationRun,
     ValidationRun,
     ReviewCase,

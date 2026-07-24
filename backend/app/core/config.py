@@ -1,42 +1,40 @@
-# Tech Nebula - Core Configuration
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Application
-    APP_NAME: str = "Tech Nebula"
-    APP_VERSION: str = "1.0.0"
+    APP_NAME: str = "AutoPrism V2"
+    APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/technebula"
-    DATABASE_SYNC_URL: str = "postgresql://user:pass@localhost:5432/technebula"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/autoprism"
+    )
+    DATABASE_SYNC_URL: str = "postgresql://postgres:postgres@localhost:5432/autoprism"
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_QUEUE_NAME: str = "autoprism:v2:collection"
 
-    # Redis / Upstash
-    REDIS_URL: str = "redis://localhost:6379"
-    UPSTASH_REST_URL: str = ""
-    UPSTASH_REST_TOKEN: str = ""
-
-    # Security
-    SECRET_KEY: str = "change-me-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
-
-    # AI API (Platform unified)
     AI_API_BASE: str = "https://api.openai.com/v1"
     AI_API_KEY: str = ""
     AI_MODEL: str = "gpt-4o"
+    AI_PROVIDER: str = "openai-compatible"
 
-    # Crawl cache TTL (seconds)
-    CRAWL_CACHE_TTL: int = 3600  # 1 hour default
+    ARTIFACT_STORAGE_PATH: str = "./data/artifacts"
+    V2_AUTO_CREATE_SCHEMA: bool = False
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
-    # AI interpretation cache TTL (seconds)
-    AI_CACHE_TTL: int = 86400  # 24 hours
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # V1 .env files may contain retired keys; V2 deliberately ignores them.
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 @lru_cache

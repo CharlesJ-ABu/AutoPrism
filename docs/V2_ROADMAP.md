@@ -7,7 +7,7 @@ currently build, its full crawler path contains a missing method, and its INFO
 lineage groups many outputs under the first L1 record. All V1 data is therefore
 retained but classified as `legacy_unverified`.
 
-## Phase 0 — Foundation (started)
+## Phase 0 — Foundation (complete)
 
 - Define stable L1 / INFO / L2 terminology.
 - Add content-addressed artifact storage.
@@ -20,7 +20,7 @@ retained but classified as `legacy_unverified`.
 
 Exit: the append-only evidence chain has migration and integration tests.
 
-## Phase 1 — Real acquisition
+## Phase 1 — Real acquisition (core complete)
 
 - Define source pool, source reputation, topic authority, and refresh policies.
 - Add policy preflight: authorization, robots, terms/rate-limit metadata, and
@@ -34,7 +34,9 @@ Exit: the append-only evidence chain has migration and integration tests.
 Exit: a source can be discovered, captured, hashed, parsed, and reproduced
 without an LLM inventing source material.
 
-## Phase 2 — Extraction and verification
+Google discovery remains pending; direct registered sources are operational.
+
+## Phase 2 — Extraction and verification (core complete)
 
 - Define versioned panel JSON Schema extensions for units, enums, required
   fields, time/geography, aggregation, and visualization mappings.
@@ -48,7 +50,11 @@ without an LLM inventing source material.
 Exit: every trusted number can be traced, recalculated, and independently
 reviewed.
 
-## Phase 3 — Automotive proof
+General unit/currency conversion tables remain pending. Deterministic decimal
+calculations, tolerance checks, review cases, append-only decisions, and
+schema-bound extraction are operational.
+
+## Phase 3 — Automotive proof (complete)
 
 - Select three automotive panels with authoritative public sources.
 - Rebuild their INFO contracts and visualizations against verified data.
@@ -57,7 +63,9 @@ reviewed.
 
 Exit: three panels run end-to-end on real data in Docker.
 
-## Phase 4 — Dynamic dashboards
+Completed with three live NHTSA API panels and a provenance UI.
+
+## Phase 4 — Dynamic dashboards (foundation complete)
 
 - Generate a dashboard proposal from a title alone.
 - Allow users to edit panels, schemas, sources, refresh policies, prompts, and
@@ -70,7 +78,11 @@ Exit: three panels run end-to-end on real data in Docker.
 
 Exit: users can create, save, switch, and audit multiple research dashboards.
 
-## Phase 5 — SaaS branch
+Title-to-proposal, editable structured JSON, immutable save, dashboard
+switching, and metric/table/provenance rendering are operational. The full UI
+DSL component registry and isolated custom React runtime remain pending.
+
+## Phase 5 — SaaS branch (not started)
 
 - Adopt the stable V2 evidence core.
 - Provision one PostgreSQL database per organization.
@@ -82,4 +94,3 @@ Exit: users can create, save, switch, and audit multiple research dashboards.
 
 Exit: a tenant-isolated public SaaS deployment passes security and recovery
 testing.
-
