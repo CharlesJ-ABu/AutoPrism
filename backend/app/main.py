@@ -10,6 +10,7 @@ from app.api.v1 import router as api_v1_router
 from app.api.v1.websocket import router as ws_router
 from app.core.config import settings
 from app.core.database import async_engine, Base
+from app.models import evidence as _evidence_models  # Register V2 metadata.
 from app.tasks.scheduler import cleanup_expired_cache, refresh_all_sources, update_tag_hotness
 
 
