@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   Archive,
   CheckCircle2,
   ChevronRight,
-  Code2,
+  Cpu,
   Database,
   Download,
   ExternalLink,
@@ -11,9 +12,11 @@ import {
   Fingerprint,
   Layers3,
   Plus,
+  Radio,
   RefreshCw,
   Search,
   ShieldCheck,
+  Sparkles,
   X,
 } from 'lucide-react';
 
@@ -94,13 +97,16 @@ function App() {
 
   return (
     <div className="app-shell">
+      <div className="nebula nebula-one" />
+      <div className="nebula nebula-two" />
+      <div className="grid-field" />
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><Layers3 size={20} /></div>
-          <div><strong>AutoPrism</strong><span>Evidence OS · V2</span></div>
+          <div><strong>AutoPrism</strong><span>INTELLIGENCE EVIDENCE OS · V2</span></div>
         </div>
         <button className="primary-button wide" onClick={() => setComposerOpen(true)}>
-          <Plus size={16} /> 新建主面板
+          <Plus size={16} /> 新建情报主面板
         </button>
         <label className="search-box">
           <Search size={15} />
@@ -121,19 +127,20 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <ShieldCheck size={16} />
-          <div><strong>本地可信模式</strong><span>原始文件内容寻址存储</span></div>
+          <span className="live-dot" />
+          <div><strong>LOCAL TRUST NODE · ONLINE</strong><span>原始证据内容寻址存储</span></div>
         </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <div className="eyebrow">RESEARCH DASHBOARD</div>
+            <div className="eyebrow"><Radio size={12} /> AUTOMOTIVE INTELLIGENCE / VERIFIED DATA LAYER</div>
             <h1>{view?.dashboard.title ?? '选择主面板'}</h1>
             <p>{view?.dashboard.description}</p>
           </div>
           <div className="topbar-actions">
+            <span className="system-pill"><Activity size={14} /> EVIDENCE NODE ONLINE</span>
             {view && <span className="version-pill"><Archive size={14} /> 冻结版本 {view.version.version}</span>}
             <button className="icon-button" aria-label="刷新" onClick={() => void loadDashboards(selectedId)}>
               <RefreshCw size={17} className={loading ? 'spin' : ''} />
@@ -147,10 +154,10 @@ function App() {
         {view && (
           <>
             <section className="audit-strip">
-              <div><CheckCircle2 /><span><strong>{view.panels.filter((panel) => panel.extraction?.validation.valid).length}/{view.panels.length}</strong> Schema 校验通过</span></div>
-              <div><Fingerprint /><span><strong>{view.panels.filter((panel) => panel.evidence.length).length}</strong> 面板具备证据链</span></div>
-              <div><FileJson2 /><span><strong>JSON Schema</strong> + UI DSL 已冻结</span></div>
-              <div><Code2 /><span><strong>确定性</strong> 字段映射与计算</span></div>
+              <div><CheckCircle2 /><span><small>SCHEMA STATUS</small><strong>{view.panels.filter((panel) => panel.extraction?.validation.valid).length}/{view.panels.length} 校验通过</strong></span></div>
+              <div><Fingerprint /><span><small>PROVENANCE</small><strong>{view.panels.filter((panel) => panel.evidence.length).length} 条完整证据链</strong></span></div>
+              <div><FileJson2 /><span><small>FROZEN CONTRACT</small><strong>JSON Schema + UI DSL</strong></span></div>
+              <div><Cpu /><span><small>COMPUTE ENGINE</small><strong>确定性映射与核算</strong></span></div>
             </section>
 
             <section className="panel-grid">
@@ -185,16 +192,19 @@ function PanelCard({ panel, onInspect }: { panel: PanelView; onInspect: () => vo
   return (
     <article className="panel-card">
       <div className="panel-header">
-        <div>
-          <span className="panel-key">{panel.key}</span>
-          <h2>{panel.title}</h2>
-          <p>{panel.description}</p>
+        <div className="panel-title-group">
+          <span className="panel-node"><Database size={15} /></span>
+          <div>
+            <span className="panel-key">{panel.key}</span>
+            <h2>{panel.title}</h2>
+            <p>{panel.description}</p>
+          </div>
         </div>
-        <button className="inspect-button" onClick={onInspect}>审计 <ChevronRight size={14} /></button>
+        <button className="inspect-button" onClick={onInspect}>溯源终端 <ChevronRight size={14} /></button>
       </div>
       <div className="metric-row">
         <div className="metric-value">{Number(panel.data?.record_count ?? 0).toLocaleString()}</div>
-        <div><strong>官方记录</strong><span>latest immutable snapshot</span></div>
+        <div><strong>官方记录</strong><span>LATEST IMMUTABLE SNAPSHOT</span></div>
         <span className={`status-badge ${panel.extraction?.validation.valid ? 'ok' : ''}`}>
           {panel.extraction?.validation.valid ? 'VALID' : 'PENDING'}
         </span>
@@ -226,7 +236,7 @@ function EvidenceDrawer({ panel, onClose }: { panel: PanelView; onClose: () => v
     <div className="drawer-backdrop" onClick={onClose}>
       <aside className="drawer" onClick={(event) => event.stopPropagation()}>
         <div className="drawer-header">
-          <div><span className="eyebrow">PROVENANCE</span><h2>{panel.title}</h2></div>
+          <div><span className="eyebrow"><ShieldCheck size={12} /> EVIDENCE TRACE TERMINAL</span><h2>{panel.title}</h2></div>
           <button className="icon-button" onClick={onClose}><X size={18} /></button>
         </div>
         <section className="drawer-section">
@@ -341,7 +351,7 @@ function DashboardComposer({
     <div className="modal-backdrop">
       <div className="composer">
         <div className="drawer-header">
-          <div><span className="eyebrow">LLM DASHBOARD DESIGNER</span><h2>从课题生成主面板</h2></div>
+          <div><span className="eyebrow"><Sparkles size={12} /> LLM DASHBOARD DESIGNER</span><h2>从课题生成主面板</h2></div>
           <button className="icon-button" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="composer-grid">

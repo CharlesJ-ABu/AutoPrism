@@ -55,6 +55,9 @@ issues. Values use deterministic mappings rather than LLM arithmetic.
 - browser desktop verification rendered all three panels and their evidence hashes.
 - provenance drawer showed JSON Pointer, timestamps, file/text hashes, Schema, UI DSL, source and artifact download.
 - 390×844 responsive check: three panels rendered and body width equaled viewport width (no horizontal overflow).
+- V1-compatible dark cockpit redesign: desktop and 390×844 layouts passed,
+  the evidence trace terminal rendered correctly, and browser console checks
+  returned no warnings or errors.
 
 ## Known non-blocking warnings
 

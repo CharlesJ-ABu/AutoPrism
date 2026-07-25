@@ -133,3 +133,16 @@ A saved `DashboardVersion` is append-only. Its child `PanelVersion` freezes:
 The current UI renders the safe `metric`, `table`, and `provenance` subset.
 Custom React source can be stored but isolated compilation and runtime remain a
 documented follow-up.
+
+## Visual continuity
+
+V2 keeps the V1 product identity: a dark intelligence cockpit, translucent
+glass surfaces, purple/cyan status accents, dense operational telemetry and
+terminal-like evidence inspection. This visual layer is independent from the
+V2 data contracts. Dynamic dashboards, frozen Schema/UI DSL definitions and
+the provenance workflow remain the authoritative behavior underneath it.
+
+Engineering metadata is summarized in the cockpit and expanded only through
+the evidence trace terminal, so the primary surface remains suitable for
+research and decision work rather than looking like a database administration
+screen.
