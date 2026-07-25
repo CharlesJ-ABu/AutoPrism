@@ -11,7 +11,7 @@ async def refresh_all_sources():
     """
     全网情报抓取任务。
     """
-    from app.api.v1.ws import manager
+    from app.core.websocket import manager
     await manager.broadcast({"type": "log", "message": "DEBUG: 后端任务进程已启动...", "level": "info"})
     
     print(f"[Scheduler] Start Global Intelligence Fetch at {datetime.now(timezone.utc)}")

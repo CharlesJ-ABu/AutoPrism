@@ -79,7 +79,11 @@ export const DeckGLMap: React.FC<DeckGLMapProps> = ({ data, styleMode = 'cyber',
 		d.display_type === 'RIPPLE' || 
 		d.display_type === 'ZONE'
 	);
-	const arcData = data.filter(d => (d.display_type === 'FLOW' || d.display_type === 'COMPARISON') && d.geo_coordinates?.end_lat);
+		const arcData = data.filter(d =>
+			(d.display_type === 'FLOW' || d.display_type === 'COMPARISON') &&
+			Number.isFinite(Number(d.geo_coordinates?.end_lat)) &&
+			Number.isFinite(Number(d.geo_coordinates?.end_lng))
+		);
 	const pathData = data.filter(d => d.display_type === 'SHIELD_UP').map(d => ({
 		path: [[d.position[0] - 1, d.position[1]], [d.position[0] + 1, d.position[1]]],
 		color: d.color,
@@ -96,7 +100,7 @@ export const DeckGLMap: React.FC<DeckGLMapProps> = ({ data, styleMode = 'cyber',
 			renderSubLayers: (props: any) => {
 				const { bbox: { west, south, east, north } } = props.tile;
 				return new BitmapLayer(props, {
-					data: null,
+					data: undefined,
 					image: props.data,
 					bounds: [west, south, east, north]
 				});

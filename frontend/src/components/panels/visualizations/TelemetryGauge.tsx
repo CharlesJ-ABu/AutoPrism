@@ -1,13 +1,25 @@
 import React from 'react';
 import ReactECharts from 'echarts-for-react';
+import { useSignalStore } from '@/stores';
 
 interface TelemetryGaugeProps {
   panelId: string;
 }
 
 export const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({ panelId }) => {
-  const seed = parseInt(panelId.replace('p', ''), 10) || 1;
-  const value = Math.floor(60 + Math.abs(Math.sin(seed)) * 39.9);
+  const signal = useSignalStore((state) =>
+    [...state.signals].reverse().find((item) => item.target_panel_ids?.includes(panelId))
+  );
+  const rawValue = signal?.metrics?.health ?? signal?.metrics?.value ?? signal?.impact_score;
+  const value = Number(rawValue);
+
+  if (!signal || !Number.isFinite(value)) {
+    return (
+      <div className="h-full min-h-[120px] flex items-center justify-center px-4 text-center text-white/20 text-[10px] tracking-widest uppercase">
+        暂无可验证的仪表指标
+      </div>
+    );
+  }
   
   const isError = value < 75;
 
@@ -59,7 +71,7 @@ export const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({ panelId }) => {
     <div className={`w-full h-full relative flex flex-col p-1 ${isError ? 'animate-[pulse_4s_infinite]' : ''}`}>
       <div className="flex justify-between items-center mb-1 px-1">
         <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-          Last Sync: 14:10:22
+          Snapshot: {new Date(signal.created_at).toLocaleString()}
         </span>
       </div>
       <div className="flex-1 min-h-0">

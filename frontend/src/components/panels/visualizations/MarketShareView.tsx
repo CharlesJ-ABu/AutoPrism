@@ -197,7 +197,7 @@ export const MarketShareView: React.FC<{ panelId: string; signals?: any[] }> = (
       {/* 极简筛选器 UI (完全还原之前的视觉效果) */}
       <div className="flex flex-wrap gap-x-1.5 gap-y-1 px-2 pt-1 border-b border-white/5 pb-1 justify-center bg-white/5">
         <div className="flex gap-1">
-          {['CN', 'EU', 'US', 'GL'].map(m => (
+          {(['CN', 'EU', 'US', 'GL'] as const).map(m => (
             <button 
               key={m} 
               onClick={() => setMarket({CN: 'China', EU: 'Europe', US: 'USA', GL: 'Global'}[m] as any)}
@@ -208,7 +208,7 @@ export const MarketShareView: React.FC<{ panelId: string; signals?: any[] }> = (
           ))}
         </div>
         <div className="flex gap-1">
-          {['ALL', 'SUV', 'SED'].map(s => (
+          {(['ALL', 'SUV', 'SED'] as const).map(s => (
             <button 
               key={s} 
               onClick={() => setSegment({ALL: 'Overall', SUV: 'SUV', SED: 'Sedan'}[s] as any)}

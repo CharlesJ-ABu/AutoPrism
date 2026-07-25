@@ -11,7 +11,7 @@ export const DatabaseExplorer: React.FC = () => {
   const fetchData = async (layer: 1 | 'info' | 2) => {
     setLoading(true);
     try {
-      const baseUrl = 'http://127.0.0.1:8001';
+      const baseUrl = '';
       let endpoint = '';
       if (layer === 1) endpoint = '/api/v1/admin/debug/raw';
       else if (layer === 'info') endpoint = '/api/v1/admin/debug/info';

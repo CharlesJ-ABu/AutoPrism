@@ -1,38 +1,56 @@
 import httpx
 import json
 import logging
-import random
 from typing import List, Optional
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.sql import RawIntelligence, IntelligenceInfo, IntelligenceStatus, StrategicInsight
+from app.models.sql import (
+    RawIntelligence,
+    IntelligenceInfo,
+    IntelligenceInfoEvidence,
+    IntelligenceStatus,
+    StrategicInsight,
+)
 from app.core.config import settings
-from app.api.v1.websocket import manager
+from app.core.websocket import manager
 
 logger = logging.getLogger(__name__)
 
 class AIService:
+    DISPLAY_TYPES = {
+        "HOTSPOT",
+        "FLOW",
+        "ZONE",
+        "MARKER",
+        "RIPPLE",
+        "COMPARISON",
+        "SHIELD_UP",
+    }
+
     VALIDATION_PROMPT = """容错与数据校验（强制约束）：
-           - 绝不交白卷：即便原文信息极度模糊或不完整，也必须强行提炼并返回完整的 JSON 结构，绝不允许返回空数组 `[]`。
-           - 缺失字段兜底：如果原文完全缺失某项指标，且无法通过分析师常识估算，请统一使用 "NA"（字符串类型）或 0（数值类型）进行占位。
+           - 只提取原文明确支持的信息；原文不足时允许返回空数组 `[]`。
+           - 缺失字段使用 null，严禁用 0、"NA"、常识估算或模型猜测冒充真实数据。
            - 结构防御：输出前请自查，绝不允许私自修改、删减或增加 JSON 预设的 Keys。确保百分比、数值和枚举值完全合法且不带多余的单位字符。"""
 
     def __init__(self, db: AsyncSession):
         self.db = db
-        # 同步前端 MOCK_PANELS 定义的角色与面板映射
+        # 同步 V1 内置面板布局的角色与面板映射。
         self.persona_panels = {
             "宏观决策": ["p1", "p2", "p3", "p13", "p14", "p21", "p22", "p23", "p24"],
             "战略与产品": ["p4", "p5", "p6", "p15", "p16", "p25", "p26", "p27", "p28"],
             "供应链与采购": ["p7", "p8", "p9", "p17", "p18", "p29", "p30", "p31", "p32"],
             "全量情报": ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p13", "p14", "p15", "p16", "p17", "p18", "p21", "p22", "p23", "p24", "p25", "p26", "p27", "p28", "p29", "p30", "p31", "p32"]
         }
-        self.tech_hubs = [
-            {"lat": 39.9, "lng": 116.4, "name": "Beijing, China"},
-            {"lat": 31.2, "lng": 121.5, "name": "Shanghai, China"},
-            {"lat": 34.0, "lng": -118.2, "name": "Los Angeles, USA"},
-            {"lat": 48.8, "lng": 2.3, "name": "Paris, France"},
-            {"lat": 35.7, "lng": 139.7, "name": "Tokyo, Japan"}
-        ]
+
+    @staticmethod
+    def _number(value, minimum: float, maximum: float) -> Optional[float]:
+        """Return a bounded real number without inventing a fallback value."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        numeric = float(value)
+        if minimum <= numeric <= maximum:
+            return numeric
+        return None
 
     async def generate_strategic_insight(self, role: str) -> bool:
         """
@@ -84,7 +102,7 @@ class AIService:
         prompt = f"""你是一个世界顶尖的汽车产业战略分析师。你现在的视角是：【{role}】({role_desc.get(role)})。
 
         ### 任务：
-        请分析下述聚合情报，并可以根据你对你角色视角的理解，在网上进行搜索查阅最新的情报，综合所有的信息，提炼出至少 10 条对该角色最重要的【战略洞察和建议】，并将其映射到地图展示语义上。
+        只能分析下述数据库快照，不得补充外部事实或声称进行了联网搜索。请提炼有证据支持的【战略洞察和建议】，并将其映射到地图展示语义上。
 
         ### 数据背景：
         {context}
@@ -132,31 +150,48 @@ class AIService:
                 if not ai_results:
                     ai_results = [raw_res] # 兜底：单对象转列表
 
+            created_count = 0
             for res in ai_results:
-                if not res.get("title") and not res.get("summary"): continue # 跳过空结果
+                if not isinstance(res, dict):
+                    continue
+                title = res.get("title")
+                summary = res.get("summary")
+                sentiment = self._number(res.get("sentiment"), -1.0, 1.0)
+                priority = self._number(res.get("priority"), 1, 4)
+                display_type = res.get("display_type")
+                if (
+                    not isinstance(title, str)
+                    or not title.strip()
+                    or not isinstance(summary, str)
+                    or sentiment is None
+                    or priority is None
+                    or display_type not in self.DISPLAY_TYPES
+                ):
+                    logger.warning("Skipping incomplete or invalid strategic insight")
+                    continue
 
                 insight = StrategicInsight(
                     role=role,
-                    title=res.get("title", "战略合成洞察"),
-                    summary=res.get("summary", ""),
-                    sentiment=float(res.get("sentiment", 0.0)),
-                    display_type=res.get("display_type", "HOTSPOT"),
+                    title=title.strip(),
+                    summary=summary,
+                    sentiment=sentiment,
+                    display_type=display_type,
                     geo_coordinates=res.get("geo_coordinates", {}),
-                    priority=int(res.get("priority", 2)),
+                    priority=int(priority),
                     affected_panels=res.get("affected_panels", []),
                     analysis=res.get("analysis", {}),
                     strategic_advice=res.get("strategic_advice", "")
                 )
                 self.db.add(insight)
-                await self.db.flush() # 获取 ID
-                print(f"--- [DEBUG] StrategicInsight created: ID={insight.id}, Role={role} ---")
+                created_count += 1
 
+            if created_count == 0:
+                raise ValueError("AI returned no valid evidence-supported strategic insights")
             await self.db.commit()
-            print(f"--- [DEBUG] All insights committed successfully. ---")
 
             await manager.broadcast({
                 "type": "log",
-                "message": f"✨ 角色 [{role}] 的战略洞察合成完毕，已新增 {len(ai_results)} 条 L2 地图情报。",
+                "message": f"✨ 角色 [{role}] 的战略洞察合成完毕，已新增 {created_count} 条 L2 地图情报。",
                 "level": "success"
             })
             return True
@@ -179,12 +214,14 @@ class AIService:
         items = result.scalars().all()
         if not items: return 0
 
-        # 按面板 ID 分组
+        # 按全部目标面板分组；同一 L1 可以为多个面板分别结构化。
         panel_groups = {}
         for item in items:
-            pid = item.target_panel_ids[0] if item.target_panel_ids else "generic"
-            if pid not in panel_groups: panel_groups[pid] = []
-            panel_groups[pid].append(item)
+            panel_ids = item.target_panel_ids or ["generic"]
+            for pid in panel_ids:
+                if pid not in panel_groups:
+                    panel_groups[pid] = []
+                panel_groups[pid].append(item)
 
         total_processed = 0
         for pid, group in panel_groups.items():
@@ -203,17 +240,32 @@ class AIService:
                         ai_results = ai_results.get("results", ai_results.get("data", [ai_results]))
                     else:
                         ai_results = [ai_results]
+                if not ai_results:
+                    raise ValueError("AI returned no evidence-supported structured results")
 
+                created_for_group = 0
                 # 遍历 AI 生成的每一条结构化结果
                 for res in ai_results:
-                    if not isinstance(res, dict): continue
+                    if not isinstance(res, dict):
+                        continue
+                    title = res.get("title_brief")
+                    impact_score = self._number(res.get("impact_score"), 0, 100)
+                    sentiment = self._number(res.get("sentiment"), -1.0, 1.0)
+                    if (
+                        not isinstance(title, str)
+                        or not title.strip()
+                        or impact_score is None
+                        or sentiment is None
+                    ):
+                        logger.warning("Skipping incomplete or invalid INFO result for panel %s", pid)
+                        continue
 
                     info_entry = IntelligenceInfo(
                         raw_id=group[0].id, # 批量模式下挂载到组内第一条
-                        title_brief=res.get("title_brief", "AI 聚合解析结果"),
+                        title_brief=title.strip(),
                         target_panel_ids=res.get("target_panel_ids", [pid]),
-                        impact_score=int(res.get("impact_score", 50)),
-                        sentiment=float(res.get("sentiment", 0.0)),
+                        impact_score=int(impact_score),
+                        sentiment=sentiment,
                         geolocation=res.get("geolocation"),
                         involved_entities=res.get("involved_entities", []),
                         metrics=res.get("metrics", res) # 兼容性处理
@@ -223,23 +275,45 @@ class AIService:
                         info_entry.metrics["reasoning"] = res["reasoning"]
 
                     self.db.add(info_entry)
+                    await self.db.flush()
+                    for raw_item in group:
+                        self.db.add(
+                            IntelligenceInfoEvidence(
+                                info_id=info_entry.id,
+                                raw_id=raw_item.id,
+                                excerpt=(raw_item.raw_content or "")[:500] or None,
+                                locator={"kind": "legacy_text_snapshot"},
+                            )
+                        )
                     total_processed += 1
+                    created_for_group += 1
 
-                # 标记这组原始情报为已处理
+                if created_for_group == 0:
+                    raise ValueError("AI returned no valid evidence-supported INFO results")
+
+                # 仅在该 L1 的最后一个目标面板成功后标记完成。
                 for item in group:
-                    item.status = IntelligenceStatus.PROCESSED
+                    panel_ids = item.target_panel_ids or ["generic"]
+                    if pid == panel_ids[-1]:
+                        item.status = IntelligenceStatus.PROCESSED
+                        item.processing_error = None
 
                 await self.db.commit()
 
                 await manager.broadcast({
                     "type": "log",
-                    "message": f"🧠 面板 {pid} 批量解读完成: 解析出 {len(ai_results)} 条结构化情报。",
+                    "message": f"🧠 面板 {pid} 批量解读完成: 解析出 {created_for_group} 条结构化情报。",
                     "level": "success"
                 })
 
             except Exception as e:
                 logger.error(f"Batch processing failed for {pid}: {str(e)}")
                 await self.db.rollback()
+                for item in group:
+                    item.processing_attempts = (item.processing_attempts or 0) + 1
+                    item.processing_error = str(e)[:1000]
+                    item.status = IntelligenceStatus.PENDING_AI
+                await self.db.commit()
 
         return total_processed
 
@@ -275,36 +349,23 @@ class AIService:
 
                         try:
                             return json.loads(content)
-                        except:
-                            print(f"⚠️ JSON Parse Error: {content[:200]}...")
-                            return []
+                        except json.JSONDecodeError as exc:
+                            raise ValueError("AI response was not valid JSON") from exc
 
                     if response.status_code in [503, 429, 502] and attempt < max_retries - 1:
                         print(f"⚠️ AI API Busy/Overload ({response.status_code}), retrying in {retry_delay}s...")
                         await asyncio.sleep(retry_delay)
                         continue
 
-                    print(f"❌ AI API Error: {response.status_code} - {response.text}")
-                    return []
+                    raise RuntimeError(f"AI API returned HTTP {response.status_code}")
 
                 except Exception as e:
                     if attempt < max_retries - 1:
                         print(f"⚠️ AI API Connection Exception ({type(e).__name__}): {str(e)}, retrying...")
                         await asyncio.sleep(retry_delay)
                         continue
-                    return []
-            return []
-
-    def _simulate_ai_processing(self, raw_item: RawIntelligence) -> dict:
-        return {
-            "title_brief": f"[Sim] {raw_item.title[:30]}",
-            "impact_score": 70,
-            "sentiment": 0.5,
-            "geolocation": random.choice(self.tech_hubs),
-            "involved_entities": ["Auto-Analyst"],
-            "target_panel_ids": raw_item.target_panel_ids,
-            "metrics": {"status": "analyzed"}
-        }
+                    raise RuntimeError("AI API request failed") from e
+            raise RuntimeError("AI API request exhausted all retries")
 
     # =========================================================================
     # 27 个面板专项处理器 (Handler Functions)

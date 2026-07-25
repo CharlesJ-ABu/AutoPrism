@@ -1,7 +1,7 @@
 # Tech Nebula - Main Application
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -10,6 +10,7 @@ from app.api.v1 import router as api_v1_router
 from app.api.v1.websocket import router as ws_router
 from app.core.config import settings
 from app.core.database import async_engine, Base
+from sqlalchemy import text
 from app.tasks.scheduler import cleanup_expired_cache, refresh_all_sources, update_tag_hotness
 
 
@@ -54,8 +55,8 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -68,6 +69,16 @@ app.include_router(ws_router)
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": settings.APP_VERSION}
+
+
+@app.get("/ready")
+async def readiness_check():
+    try:
+        async with async_engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
+    return {"status": "ready", "version": settings.APP_VERSION}
 
 
 @app.get("/")

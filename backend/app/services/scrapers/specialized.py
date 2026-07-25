@@ -5,23 +5,25 @@ from app.models.sql import RawIntelligence, IntelligenceStatus
 
 class SpecializedScraper:
     """
-    重构后的抓取器：所有任务委托给外部传入的 AI 服务进行实时检索。
+    V1 兼容发现器：仅接收模型返回的候选来源，并统一标记为未验证。
+    它不替代真实网页抓取，也不会为缺失来源伪造 URL。
     """
 
     @staticmethod
     async def _ai_driven_search(ai_service, panel_id: str, topic: str, keywords: list, extra_prompt: str = ""):
         """
-        核心 AI 搜索逻辑：使用传入的 ai_service 实例进行检索。
+        让模型供应商返回候选来源。模型是否具备联网能力取决于供应商，
+        因此结果进入 L1 后仍必须视为 legacy_unverified。
         """
         from datetime import datetime
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         search_query = f"最新的关于 {topic} 的汽车产业情报，重点关注 {', '.join(keywords)}"
 
-        prompt = f"""你是一个具备搜索能力的汽车产业分析专家。
+        prompt = f"""你是一个汽车产业来源发现助手。你的模型供应商可能不具备联网能力，
+        因此不得声称已经访问过网页，也不得编造来源、URL、日期或数值。
         当前北京时间：{current_time}
-        请针对主题：'{search_query}' 在互联网上搜索最新的、属于当前时间点附近的真实情报。如果主题是关于未来某个时间点发生的事情，你可以根据主题进行搜索。
-        并形成你的自己的判断和理解，重新组织语言进行输出，你自己的综合判断和理解单独做一条情报条目，来源媒体名和 URL 就用 AUTOPRISM 来代替。
-        要求返回至少 10 条高质量、来源不同的情报条目，确保覆盖不同的品牌或地区。
+        请针对主题：'{search_query}' 返回你能够明确给出公开 HTTP(S) 来源 URL 的候选情报。
+        无法确认 URL 的项目必须省略；不要输出你自己的推测或综合判断。
         {extra_prompt}
         格式为 JSON 数组：
         [
@@ -67,15 +69,14 @@ class SpecializedScraper:
 
         results = []
         for item in ai_items:
-            # 提取 URL，如果没有则生成一个伪随机 URL 以满足 L1 唯一性约束
+            # V1 只接收带公开来源 URL 的候选；禁止生成占位来源。
             url = item.get("source_url") or item.get("url")
-            if not url:
-                import uuid
-                url = f"https://ai-intel.internal/{panel_id}/{uuid.uuid4().hex[:8]}"
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                continue
 
             results.append(RawIntelligence(
-                title=item.get("title", f"AI 实时捕获: {topic}"),
-                source_name=item.get("source_name", "AI_Global_Search"),
+                title=item.get("title", f"AI 候选来源: {topic}"),
+                source_name=f"legacy_unverified:{item.get('source_name', 'AI_Source_Discovery')}",
                 source_url=url,
                 raw_content=item.get("content", "AI 正在深度检索详情..."),
                 target_panel_ids=[panel_id],

@@ -21,9 +21,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
   const [error, setError] = React.useState<string | null>(null);
 
   const handleResetLayer = async (layer: 'l1' | 'info' | 'l2') => {
+    const label = layer.toUpperCase();
+    if (!window.confirm(`确定永久清空 ${label} 数据吗？此操作无法撤销。`)) return;
     setError(null);
     try {
-      const res = await fetch(`http://127.0.0.1:8001/api/v1/admin/trigger/reset/${layer}`, { method: 'POST' });
+      const res = await fetch(`/api/v1/admin/trigger/reset/${layer}`, {
+        method: 'POST',
+        headers: { 'X-AutoPrism-Confirm': `RESET-${label}` },
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}: 指令执行失败`);
     } catch (e: any) {
       setError(e.message || `清空 ${layer.toUpperCase()} 失败`);

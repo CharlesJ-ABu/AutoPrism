@@ -49,26 +49,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ panelId, signa
     }));
     xAxisData = Array.from(new Set(filteredSignals.map(s => new Date(s.created_at).toLocaleDateString()))).sort();
   } else {
-    const seed = parseInt(panelId.replace('p', ''), 10) || 1;
-    xAxisData = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    series = regions.map((reg, idx) => ({
-      name: reg,
-      type: 'line',
-      smooth: true,
-      symbol: 'none',
-      data: xAxisData.map((_, i) => 80 + Math.sin(i * 0.5 + seed + idx) * 15 + Math.random() * 5),
-      itemStyle: { color: colors[reg] },
-      lineStyle: { width: 1.5 },
-      areaStyle: {
-        color: {
-          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: `${colors[reg]}15` },
-            { offset: 1, color: 'transparent' }
-          ]
-        }
-      }
-    }));
+    return (
+      <div className="h-full min-h-[120px] flex items-center justify-center px-4 text-center text-white/20 text-[10px] tracking-widest uppercase">
+        暂无可验证的时序数据
+      </div>
+    );
   }
 
   const option = {
@@ -107,7 +92,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ panelId, signa
     <div className="w-full h-full p-1 flex flex-col">
       <div className="flex justify-between items-center mb-1 px-1">
         <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-          Last Sync: 14:10:22
+          Snapshot: {new Date(filteredSignals[0]?.created_at).toLocaleString()}
         </span>
       </div>
       <div className="flex-1 min-h-0">

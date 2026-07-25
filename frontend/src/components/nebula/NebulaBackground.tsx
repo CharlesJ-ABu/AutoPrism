@@ -1,7 +1,6 @@
 // AutoPrism - 3D Nebula Background
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Points, PointMaterial } from '@react-three/drei';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import type { TechTag } from '@/types';
@@ -136,16 +135,6 @@ export function NebulaBackground({ tags, opacity = 0.4 }: NebulaBackgroundProps)
         <ambientLight intensity={0.5} />
         <StarField />
         {tags.length > 0 && <NebulaNodes tags={tags} />}
-
-        {/* Post-processing Bloom for Glow Effect */}
-        <EffectComposer>
-          <Bloom
-            luminanceThreshold={0.8}
-            mipmapBlur
-            intensity={0.3}
-            radius={0.3}
-          />
-        </EffectComposer>
 
         {/* Deep space ambient sphere */}
         <mesh>

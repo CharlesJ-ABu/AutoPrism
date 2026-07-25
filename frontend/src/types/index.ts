@@ -39,7 +39,7 @@ export interface Panel {
   tag?: string;
   title?: string;
   type: PanelType;
-  presentation_type?: 'ticker' | 'time-series' | 'heatmap' | 'radar' | 'gauge';
+  presentation_type?: 'ticker' | 'time-series' | 'heatmap' | 'radar' | 'gauge' | 'pie';
   size: PanelSize;
   position: { x: number; y: number; w: number; h: number };
   is_visible: boolean;

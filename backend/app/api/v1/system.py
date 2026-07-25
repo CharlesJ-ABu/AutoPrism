@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, BackgroundTasks, Depends
+from fastapi import APIRouter, Request, BackgroundTasks, Depends, Header, HTTPException
 from typing import Dict, Any
 from app.core.state import system_state
 from app.tasks.scheduler import refresh_all_sources
@@ -22,14 +22,12 @@ def apply_scheduler_config(scheduler, config: Dict[str, Any]):
         scheduler.remove_job("crawler_fetch")
 
     if c_mode == "daily":
-        try:
-            hour, minute = map(int, c_val.split(":"))
-            scheduler.add_job(refresh_all_sources, CronTrigger(hour=hour, minute=minute), id="crawler_fetch")
-        except: pass
+        hour, minute = _parse_daily_time(c_val)
+        scheduler.add_job(refresh_all_sources, CronTrigger(hour=hour, minute=minute), id="crawler_fetch")
     elif c_mode == "interval":
-        try:
-            scheduler.add_job(refresh_all_sources, IntervalTrigger(minutes=int(c_val)), id="crawler_fetch")
-        except: pass
+        scheduler.add_job(refresh_all_sources, IntervalTrigger(minutes=_parse_interval(c_val)), id="crawler_fetch")
+    elif c_mode != "manual":
+        raise ValueError(f"unsupported crawler mode: {c_mode}")
     # Manual mode handles itself by having no job
 
     # --- AI Denoising Engine ---
@@ -41,14 +39,41 @@ def apply_scheduler_config(scheduler, config: Dict[str, Any]):
         scheduler.remove_job("ai_denoise")
 
     if a_mode == "daily":
-        try:
-            hour, minute = map(int, a_val.split(":"))
-            scheduler.add_job(run_ai_pipeline, CronTrigger(hour=hour, minute=minute), id="ai_denoise")
-        except: pass
+        hour, minute = _parse_daily_time(a_val)
+        scheduler.add_job(run_ai_pipeline, CronTrigger(hour=hour, minute=minute), id="ai_denoise")
     elif a_mode == "interval":
-        try:
-            scheduler.add_job(run_ai_pipeline, IntervalTrigger(minutes=int(a_val)), id="ai_denoise")
-        except: pass
+        scheduler.add_job(run_ai_pipeline, IntervalTrigger(minutes=_parse_interval(a_val)), id="ai_denoise")
+    elif a_mode != "manual":
+        raise ValueError(f"unsupported AI mode: {a_mode}")
+
+
+def _parse_daily_time(value: str) -> tuple[int, int]:
+    try:
+        hour, minute = map(int, value.split(":"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("daily time must use HH:MM") from exc
+    if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+        raise ValueError("daily time is outside the valid range")
+    return hour, minute
+
+
+def _parse_interval(value: str) -> int:
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("interval must be an integer number of minutes") from exc
+    if not 1 <= minutes <= 10080:
+        raise ValueError("interval must be between 1 and 10080 minutes")
+    return minutes
+
+
+def _require_reset_confirmation(layer: str, confirmation: str | None) -> None:
+    expected = f"RESET-{layer.upper()}"
+    if confirmation != expected:
+        raise HTTPException(
+            status_code=409,
+            detail=f"set X-AutoPrism-Confirm to {expected} to confirm this destructive action",
+        )
 
 async def run_ai_pipeline():
     from app.core.database import async_session_maker
@@ -77,10 +102,13 @@ async def update_config(payload: Dict[str, Any], request: Request):
         }
     }
 
-    system_state.update_config(mapped_config)
     scheduler = request.app.state.scheduler
-    if scheduler:
-        apply_scheduler_config(scheduler, system_state.config)
+    try:
+        if scheduler:
+            apply_scheduler_config(scheduler, mapped_config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    system_state.update_config(mapped_config)
     return {"status": "ok", "config": system_state.config}
 
 @router.post("/trigger/fetch")
@@ -89,7 +117,7 @@ async def trigger_fetch(background_tasks: BackgroundTasks):
         try:
             await refresh_all_sources()
         except Exception as e:
-            from app.api.v1.ws import manager
+            from app.core.websocket import manager
             await manager.broadcast({"type": "log", "message": f"CRITICAL: Crawler failed: {str(e)}", "level": "error"})
             print(f"CRAWLER ERROR: {str(e)}")
 
@@ -175,33 +203,45 @@ async def get_structured_data(db: AsyncSession = Depends(get_db)):
     } for i in items]
 
 @router.post("/trigger/reset/l1")
-async def reset_l1(db: AsyncSession = Depends(get_db)):
+async def reset_l1(
+    db: AsyncSession = Depends(get_db),
+    confirmation: str | None = Header(default=None, alias="X-AutoPrism-Confirm"),
+):
     """清空 L1 原始情报"""
+    _require_reset_confirmation("l1", confirmation)
     from app.models.sql import RawIntelligence
     from sqlalchemy import delete
-    from app.api.v1.ws import manager
+    from app.core.websocket import manager
     await db.execute(delete(RawIntelligence))
     await db.commit()
     await manager.broadcast({"type": "log", "message": "☢️ L1 原始情报库已完全清空。", "level": "error"})
     return {"status": "ok"}
 
 @router.post("/trigger/reset/info")
-async def reset_info(db: AsyncSession = Depends(get_db)):
+async def reset_info(
+    db: AsyncSession = Depends(get_db),
+    confirmation: str | None = Header(default=None, alias="X-AutoPrism-Confirm"),
+):
     """清空 INFO 面板解读"""
+    _require_reset_confirmation("info", confirmation)
     from app.models.sql import IntelligenceInfo
     from sqlalchemy import delete
-    from app.api.v1.ws import manager
+    from app.core.websocket import manager
     await db.execute(delete(IntelligenceInfo))
     await db.commit()
     await manager.broadcast({"type": "log", "message": "☢️ INFO 面板解读库已完全清空。", "level": "error"})
     return {"status": "ok"}
 
 @router.post("/trigger/reset/l2")
-async def reset_l2(db: AsyncSession = Depends(get_db)):
+async def reset_l2(
+    db: AsyncSession = Depends(get_db),
+    confirmation: str | None = Header(default=None, alias="X-AutoPrism-Confirm"),
+):
     """清空 L2 战略洞察"""
+    _require_reset_confirmation("l2", confirmation)
     from app.models.sql import StrategicInsight
     from sqlalchemy import delete
-    from app.api.v1.ws import manager
+    from app.core.websocket import manager
     await db.execute(delete(StrategicInsight))
     await db.commit()
     await manager.broadcast({"type": "log", "message": "☢️ L2 战略洞察库已完全清空。", "level": "error"})

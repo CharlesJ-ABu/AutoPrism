@@ -69,9 +69,9 @@ export const SpecComparisonView: React.FC<{ panelId: string; signals?: any[] }> 
     <div className="h-full w-full flex flex-col p-2 bg-black/40 rounded-lg border border-white/5 space-y-2 overflow-x-auto no-scrollbar">
       <div className="flex justify-between items-center mb-1 sticky left-0">
         <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-          Last Sync: {new Date().toLocaleTimeString()}
+          Database snapshot
         </span>
-        <span className="text-[7px] text-white/20 uppercase font-black">Live Market Benchmark</span>
+        <span className="text-[7px] text-white/20 uppercase font-black">Market snapshot</span>
       </div>
 
       <table className="w-full text-left border-collapse min-w-[300px]">

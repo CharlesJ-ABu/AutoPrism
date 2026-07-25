@@ -2,7 +2,7 @@
 
 ![AutoPrism Banner](https://img.shields.io/badge/AutoPrism-Global%20Intelligence%20Dashboard-8B5CF6?style=for-the-badge)
 
-AutoPrism 是一款专为汽车产业与投资领域打造的**实时产业情报与全局数据看板**。
+AutoPrism V1 是一款面向汽车产业与投资研究的**本地数据快照与全局情报看板**。`main` 分支是无需登录的单机版本；V2 与 SaaS 在独立分支持续演进。
 
 <div align="center">
   <img src="assets/main.jpg" alt="AutoPrism 全局指挥中心概览" width="100%">
@@ -17,7 +17,7 @@ AutoPrism 是一款专为汽车产业与投资领域打造的**实时产业情�
 </div>
 <br>
 
-系统的核心护城河不在于“信息获取的数量”，而在于**“极致的结构化和降噪能力”**。AutoPrism 能够快速将全球新闻、供应链异动和竞品参数转化为直观的 3D 地图光柱、2D 战术热力图以及关键决策点，直击企业高管与投研机构的核心痛点。
+系统重点是把数据库中的 L1 原始快照转换为 INFO 结构化记录和 L2 战略洞察，并保留 INFO 到原始快照的证据关系。没有可验证数据时，界面显示空状态，不生成随机曲线或行业基准值。
 
 ---
 
@@ -26,9 +26,12 @@ AutoPrism 是一款专为汽车产业与投资领域打造的**实时产业情�
 - **🌍 双地图态势感知引擎 (Dual Map Engine)**
   - **宏观战略视角 (Globe View)**：基于 `globe.gl` 渲染的 3D 旋转地球，直观展示全球供应链断裂、地缘危机冲击节点。
   - **微观战术视角 (Tactical View)**：基于 `deck.gl` 的高性能 2D 散点图，轻松承载百万级别的终端销量数据和经销网络。
-- **🧠 云端 AI 降噪管线 (AI Denoising Pipeline)**
-  - 利用顶级云端大模型 (如 GPT-4o) 过滤全网海量公关稿和噪音。
-  - **全自动坐标映射**：将非结构化新闻（如“德国工厂停产”）提炼为高危预警，并自动计算得出其实际物理经纬度坐标，直接点亮前端地图。
+- **🧠 AI 结构化管线 (AI Denoising Pipeline)**
+  - 通过 OpenAI 兼容接口处理数据库中已有的 L1 快照。
+  - 模型只负责生成候选结构；缺失或越界的核心数值会被代码拒绝，不会使用默认值补齐。
+- **🔗 数据证据链 (Evidence Chain)**
+  - INFO 记录可回溯到一个或多个 L1 快照。
+  - L1 内容采用哈希去重和不可变修订；错误值以新修订替代，不覆盖历史。
 - **📊 动态车型对标库 (Dynamic Benchmarking)**
   - 采用 PostgreSQL `JSONB` 结构灵活存储行业内日新月异的技术指标（如端到端智驾算力、电池形态），告别死板的列式数据库。
 
@@ -52,8 +55,9 @@ AutoPrism 是一款专为汽车产业与投资领域打造的**实时产业情�
 
 ## 🚀 快速开始 (Getting Started)
 
-### 1. 配置云端 AI API (极其重要)
-系统依赖大模型进行降噪和提取坐标。请在 `backend/.env` 中配置您的 API 密钥：
+### 1. 配置云端 AI API（可选）
+
+浏览已有数据库和启动界面不需要 API 密钥。只有主动执行 AI 候选发现、INFO 结构化或 L2 洞察生成时才需要配置。密钥只放在本地 `backend/.env`，不要提交到 Git：
 ```bash
 # 复制示例配置文件
 cd backend
@@ -65,37 +69,56 @@ AI_API_KEY="sk-xxxxxxxxxxxxxxxxxxx"      # 您的 API 密钥
 AI_MODEL="gpt-4o"                        # 推荐使用 GPT-4o 或顶级国产大模型
 ```
 
-### 2. 体验 AI 降噪与提取魔法 (本地脚本测试)
-无需启动庞大的数据库，您可以直接运行测试脚本，亲眼目睹一段纯文本新闻是如何被“榨干”出坐标和风险权重的：
+### 2. Docker Compose 一键启动
+
+确保 Docker Desktop 已启动，在项目根目录运行：
+
 ```bash
-cd backend
-python test_ai_pipeline.py
+docker compose up -d --build
 ```
-*您将会在终端看到大模型返回的结构化 JSON，包含了提取出的经纬度 `{lat: 52.5, lng: 13.4}`。*
 
-### 3. 启动完整的后端服务 (API + 数据库)
-如果您希望本地调试完整的前后端数据流，需要先启动 Docker 和 FastAPI：
-1. 请确保您本地的 **Docker Desktop** 已经启动。
-2. 在 `AutoPrism` 根目录下启动数据库容器：
-   ```bash
-   docker-compose up -d
-   ```
-3. 进入 `backend` 目录，安装依赖并启动后端：
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-   ```
-   *后端启动后，您可以通过 `http://localhost:8001/docs` 查看 Swagger 接口文档。*
+- 前端：[http://localhost:5173](http://localhost:5173)
+- API 文档：[http://localhost:8000/docs](http://localhost:8000/docs)
+- 就绪检查：[http://localhost:8000/ready](http://localhost:8000/ready)
 
-### 4. 启动前端双地图大屏
-确保您已安装 Node.js 环境：
+容器启动时会自动执行 Alembic 数据库迁移。
+
+### 3. 本地开发
+
 ```bash
+# 后端
+cd backend
+pip install -r requirements.txt -r requirements-dev.txt
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 前端（另一个终端）
 cd frontend
-npm install --legacy-peer-deps
+npm ci
 npm run dev
 ```
-打开浏览器访问 `http://localhost:5173`，点击面板右上角的切换按钮，即可在 3D 地球与 2D 战术视图间无缝切换！
+
+### 4. 自动化测试
+
+```bash
+cd backend
+pytest -q
+
+cd ../frontend
+npm run lint
+npm run build
+npm audit
+```
+
+`backend/test_ai_pipeline.py` 是可选的真实模型调用脚本，不属于离线测试套件，运行它可能产生模型费用。
+
+## 数据可信度说明
+
+- 当前 V1 的 AI “搜索”是遗留的候选发现机制，并不等同于真实浏览器爬虫或官方 API 采集。
+- 所有治理前的原始记录统一标为 `legacy_unverified`，保留可浏览性但不声称已验证。
+- 新快照保存 `content_hash`、抓取时间、修订号和替代关系；相同内容不会重复写入。
+- INFO 记录通过证据关联表指向全部参与结构化的 L1 快照。
+- 真实 HTML、动态网页、PDF、RSS、CSV/Excel、官方 API 和合规登录采集属于 V2 路线，详见 [V1 重构说明](docs/V1_REFACTOR.md)。
 
 ---
 
@@ -109,9 +132,11 @@ AutoPrism/
 │   ├── src/components/maps # 核心地图渲染组件 (GlobeMap, DeckGLMap)
 │   └── tailwind.config.js  # 指挥中心样式配置
 └── backend/                # Python + FastAPI 后端代码库
-    ├── app/models/sql.py   # 核心数据库漏斗模型 (RawIntelligence -> StructuredSignal)
+    ├── alembic/            # 数据库迁移与 legacy 证据回填
+    ├── app/models/sql.py   # L1 -> INFO -> L2 数据模型
     ├── app/services/ai_service.py # AI 降噪清洗引擎管线
-    └── test_ai_pipeline.py # AI 提炼测试脚本
+    ├── tests/              # 离线自动化测试
+    └── test_ai_pipeline.py # 可选的真实模型调用脚本
 ```
 
 ---

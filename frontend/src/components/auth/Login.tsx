@@ -1,11 +1,10 @@
 // AutoPrism - Auth Components
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
 import { Button, Input, GlassCard } from '@/components/ui';
 
 export default function Login() {
-  const navigate = useNavigate();
+  const navigate = (path: string) => window.location.assign(path);
   const { login, isLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

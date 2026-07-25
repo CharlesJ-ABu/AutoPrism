@@ -36,7 +36,7 @@ const Dashboard: React.FC = () => {
 		}
 	}, [logs, taskProgress, isConsoleOpen]);
 
-	const { panels, loadPanels, refreshSource, isLoading: isPanelsLoading } = usePanelsStore();
+	const { panels, loadPanels, isLoading: isPanelsLoading } = usePanelsStore();
 	const { feeds, loadFeed, isLoading: isFeedsLoading } = useFeedStore();
 	const { signals, loadSignals } = useSignalStore();
 	const [insights, setInsights] = useState<any[]>([]);
@@ -45,7 +45,7 @@ const Dashboard: React.FC = () => {
 	const loadL2Insights = async (role: string) => {
 		setIsInsightLoading(true);
 		try {
-			const res = await fetch(`http://127.0.0.1:8001/api/v1/ai/insights?role=${encodeURIComponent(role)}`);
+				const res = await fetch(`/api/v1/ai/insights?role=${encodeURIComponent(role)}`);
 			if (res.ok) {
 				const data = await res.json();
 				setInsights(data);
@@ -80,8 +80,9 @@ const Dashboard: React.FC = () => {
 		};
 		init();
 
-		const userId = "admin";
-		const ws = new WebSocket(`ws://127.0.0.1:8001/ws/${userId}`);
+			const userId = "local";
+			const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${userId}`);
 		ws.onmessage = (event) => {
 			const data = JSON.parse(event.data);
 			if (data.type === 'log') {
@@ -112,7 +113,7 @@ const Dashboard: React.FC = () => {
 		console.log(`[Dashboard] Triggering ${engine}...`);
 		try {
 			let endpoint = engine === 'crawler' ? '/admin/trigger/fetch' : '/admin/trigger/ai';
-			let method = 'POST';
+				const method = 'POST';
 			let body: string | null = null;
 
 			if (engine === 'ai') {
@@ -121,7 +122,7 @@ const Dashboard: React.FC = () => {
 				console.log(`[Dashboard] Role: ${activeRole}, Payload: ${body}`);
 			}
 
-			const baseUrl = 'http://127.0.0.1:8001/api/v1';
+				const baseUrl = '/api/v1';
 			console.log(`[Dashboard] Fetching: ${baseUrl}${endpoint}`);
 
 			const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -159,6 +160,10 @@ const Dashboard: React.FC = () => {
 
 	const roles = ['全量情报', '宏观决策', '战略与产品', '供应链与采购'];
 	const visiblePanels = (panels || []).filter(p => activeRole === '全量情报' || p.role === activeRole);
+	const geocodedInsights = insights.filter((insight) =>
+		Number.isFinite(Number(insight.geo_coordinates?.lat)) &&
+		Number.isFinite(Number(insight.geo_coordinates?.lng))
+	);
 
 	const getFeedForPanel = (panelId: string, sourceId?: string) => {
 		if (sourceId && feeds.has(sourceId)) return feeds.get(sourceId);
@@ -275,11 +280,11 @@ const Dashboard: React.FC = () => {
 							<div className="w-full flex-1 min-h-0">
 								{mapMode === 'globe' ? (
 									<GlobeMap
-										data={insights.map((s, idx) => {
+										data={geocodedInsights.map((s) => {
 											// 基于 L2 结构的映射
 											return {
-												lat: s.geo_coordinates?.lat || 0,
-												lng: s.geo_coordinates?.lng || 0,
+													lat: Number(s.geo_coordinates.lat),
+													lng: Number(s.geo_coordinates.lng),
 												size: (s.priority || 2) * 0.2, // 根据优先级决定高度
 												color: s.sentiment > 0 ? '#10b981' : s.sentiment < 0 ? '#ef4444' : '#f59e0b',
 												name: s.title,
@@ -302,9 +307,9 @@ const Dashboard: React.FC = () => {
 									/>
 								) : (
 									<DeckGLMap
-										data={insights.map((s, idx) => {
+										data={geocodedInsights.map((s) => {
 											return {
-												position: [s.geo_coordinates?.lng || 0, s.geo_coordinates?.lat || 0],
+												position: [Number(s.geo_coordinates.lng), Number(s.geo_coordinates.lat)],
 												size: (s.priority || 2) * 20,
 												color: s.sentiment > 0 ? [16, 185, 129] : s.sentiment < 0 ? [239, 68, 68] : [245, 158, 11],
 												name: s.title,
@@ -329,11 +334,11 @@ const Dashboard: React.FC = () => {
 						</GlassCard>
 					</div>
 
-					{/* Row 2: AI 实时情报洞察流 - 独立全宽层级 */}
+					{/* Row 2: AI 情报洞察流 - 独立全宽层级 */}
 					<div className="w-full mb-8">
 						<div className="flex items-center gap-3 mb-4 px-1">
 							<div className="w-1 h-4 bg-violet-500 rounded-full" />
-							<h3 className="text-xs font-black text-white/40 uppercase tracking-[0.2em]">实时战略洞察系统</h3>
+							<h3 className="text-xs font-black text-white/40 uppercase tracking-[0.2em]">战略洞察快照</h3>
 							<div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
 						</div>
 						<InsightsStream 
@@ -369,8 +374,7 @@ const Dashboard: React.FC = () => {
 											<Panel
 												panel={panel}
 												signals={panelSignals}
-												onRefresh={refreshSource}
-												onOpenReader={(item) => setSelectedIntel(item)}
+													onOpenReader={(item) => setSelectedIntel(item)}
 											/>
 										</div>
 									);
@@ -441,7 +445,7 @@ const Dashboard: React.FC = () => {
 				config={schedConfig}
 				onSave={async (newConfig) => {
 					try {
-						const res = await fetch('http://127.0.0.1:8001/api/v1/admin/scheduler/config', {
+							const res = await fetch('/api/v1/admin/scheduler/config', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify(newConfig)

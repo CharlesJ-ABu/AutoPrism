@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Tag } from 'lucide-react';
 import { Button, GlassCard, Input } from '@/components/ui';
-import { useNavigate } from 'react-router-dom';
 import { tags as tagsApi } from '@/lib/api';
 
 interface TagItem {
@@ -21,7 +20,7 @@ const PRESET_COLORS = [
 ];
 
 export default function TagManager() {
-  const navigate = useNavigate();
+  const navigate = (path: string) => window.location.assign(path);
   const [tags, setTags] = useState<TagItem[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', category: '', color: '#4ECDC4' });

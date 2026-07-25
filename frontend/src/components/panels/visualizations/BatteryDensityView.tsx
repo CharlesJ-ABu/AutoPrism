@@ -71,7 +71,7 @@ export const BatteryDensityView: React.FC<{ panelId: string; signals?: any[] }> 
       <div className="flex justify-between items-center mb-1">
         <div className="flex flex-col">
           <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-            Last Sync: {new Date().toLocaleTimeString()}
+            Database snapshot
           </span>
           <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">动力电池技术天梯 (Wh/kg)</span>
         </div>

@@ -1,23 +1,29 @@
 import React from 'react';
 import ReactECharts from 'echarts-for-react';
+import { useSignalStore } from '@/stores';
 
 interface GridHeatmapProps {
   panelId: string;
 }
 
 export const GridHeatmap: React.FC<GridHeatmapProps> = ({ panelId }) => {
-  const seed = parseInt(panelId.replace('p', ''), 10) || 1;
+  const signal = useSignalStore((state) =>
+    [...state.signals].reverse().find((item) => item.target_panel_ids?.includes(panelId))
+  );
+  const heatmap = signal?.metrics?.heatmap;
+  if (!signal || !Array.isArray(heatmap)) {
+    return (
+      <div className="h-full min-h-[120px] flex items-center justify-center px-4 text-center text-white/20 text-[10px] tracking-widest uppercase">
+        暂无可验证的热力图数据
+      </div>
+    );
+  }
   const hours = ['12a', '2a', '4a', '6a', '8a', '10a', '12p', '2p', '4p', '6p', '8p', '10p'];
   const days = ['Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon', 'Sun'];
 
-  const data = [];
-  for (let i = 0; i < 7; i++) {
-    for (let j = 0; j < 12; j++) {
-      // Deterministic pseudo-random based on indices and seed
-      const val = Math.floor(Math.abs(Math.sin(i * j * seed)) * 10);
-      data.push([j, i, val]);
-    }
-  }
+  const data = heatmap
+    .filter((item: unknown) => Array.isArray(item) && item.length === 3)
+    .map((item: [number, number, number]) => item);
 
   const option = {
     tooltip: {
@@ -84,7 +90,7 @@ export const GridHeatmap: React.FC<GridHeatmapProps> = ({ panelId }) => {
     <div className="w-full h-full relative p-2 flex flex-col">
       <div className="flex justify-between items-center mb-1 px-1">
         <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-          Last Sync: 14:10:22
+          Snapshot: {new Date(signal.created_at).toLocaleString()}
         </span>
       </div>
       <div className="flex-1 min-h-0">

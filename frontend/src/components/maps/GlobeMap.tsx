@@ -26,7 +26,11 @@ export const GlobeMap: React.FC<GlobeMapProps> = ({ data, styleMode = 'cyber', o
 	const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
 
 	// 1. FLOW & COMPARISON (飞线层)
-	const arcsData = data.filter(d => (d.display_type === 'FLOW' || d.display_type === 'COMPARISON') && d.geo_coordinates?.end_lat).map(d => ({
+	const arcsData = data.filter(d =>
+		(d.display_type === 'FLOW' || d.display_type === 'COMPARISON') &&
+		Number.isFinite(Number(d.geo_coordinates?.end_lat)) &&
+		Number.isFinite(Number(d.geo_coordinates?.end_lng))
+	).map(d => ({
 		startLat: d.lat,
 		startLng: d.lng,
 		endLat: d.geo_coordinates?.end_lat,
@@ -46,18 +50,17 @@ export const GlobeMap: React.FC<GlobeMapProps> = ({ data, styleMode = 'cyber', o
 		color: d.color
 	}));
 
-	// 3. SHIELD_UP (路径/光墙层)
-	const pathsData = data.filter(d => d.display_type === 'SHIELD_UP').map(d => [
-		[d.lat - 1, d.lng], [d.lat + 1, d.lng]
-	]);
-
-	// 4. ZONE (区域/多边形层)
+	// 3. ZONE (区域/多边形层)
 	const polygonsData = data.filter(d => d.display_type === 'ZONE').map(d => ({
-		coords: [
-			[d.lat - 2, d.lng - 2], [d.lat + 2, d.lng - 2],
-			[d.lat + 2, d.lng + 2], [d.lat - 2, d.lng + 2],
-			[d.lat - 2, d.lng - 2]
-		],
+		geometry: {
+			type: 'Polygon' as const,
+			// GeoJSON coordinates are [longitude, latitude].
+			coordinates: [[
+				[d.lng - 2, d.lat - 2], [d.lng - 2, d.lat + 2],
+				[d.lng + 2, d.lat + 2], [d.lng + 2, d.lat - 2],
+				[d.lng - 2, d.lat - 2]
+			]]
+		},
 		color: d.color,
 		name: d.name
 	}));
@@ -125,8 +128,7 @@ export const GlobeMap: React.FC<GlobeMapProps> = ({ data, styleMode = 'cyber', o
 				width={dimensions.width}
 				height={dimensions.height}
 				globeImageUrl={config.image}
-				globeColor={config.color}
-				atmosphereColor={config.atmosphere}
+					atmosphereColor={config.atmosphere}
 				showAtmosphere={config.showAtmosphere}
 				bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
 				backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
@@ -159,12 +161,13 @@ export const GlobeMap: React.FC<GlobeMapProps> = ({ data, styleMode = 'cyber', o
 					color: d.color,
 					name: d.name
 				}))}
-				pathPoints={d => d.path}
-				pathColor={d => d.color}
+					pathPoints={(d: any) => d.path}
+					pathColor={(d: any) => d.color}
 				pathStroke={3}
 				onPathClick={(p: any) => onSelect?.(p.name)}
 
 				polygonsData={polygonsData}
+				polygonGeoJsonGeometry="geometry"
 				polygonAltitude={0.01}
 				polygonCapColor={(d: any) => `${d.color}44`}
 				polygonSideColor={(d: any) => `${d.color}22`}

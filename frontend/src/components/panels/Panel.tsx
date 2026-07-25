@@ -90,7 +90,7 @@ export function Panel({ panel, signals = [], children, onRefresh, onWidthToggle,
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8001/api/v1/admin/trigger/panel/${panel.id}`, {
+      const res = await fetch(`/api/v1/admin/trigger/panel/${panel.id}`, {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Sync failed');
@@ -161,7 +161,7 @@ export function Panel({ panel, signals = [], children, onRefresh, onWidthToggle,
         {feed && !collapsed && (
           <div className="px-4 py-1.5 border-t border-white/5 text-[9px] font-mono text-white/20 flex justify-between items-center">
             <div className="flex items-center gap-2">
-               <span className="text-emerald-500/60 uppercase">Live</span>
+               <span className="text-emerald-500/60 uppercase">Snapshot</span>
                <span>{new Date(feed.fetched_at).toLocaleTimeString()}</span>
             </div>
             <div className="uppercase">Node: {panel.id}</div>
@@ -177,7 +177,7 @@ export function Panel({ panel, signals = [], children, onRefresh, onWidthToggle,
 // ============================================
 
 export function PresentationLayer({ panel, feed, signals = [], onOpenReader }: { panel: PanelType, feed?: any, signals?: any[], onOpenReader?: (item: any) => void }) {
-  // 1. 强制拦截：特殊逻辑面板 (即使无信号也展示 Baseline)
+  // 1. 特殊逻辑面板
   if (panel.id === 'p1') return <PolicyRadarView panelId={panel.id} signals={signals} />;
   if (panel.id === 'p2') return <PriceAdjustmentView panelId={panel.id} signals={signals} />;
   if (panel.id === 'p3') return <GeopoliticsView panelId={panel.id} signals={signals} />;
@@ -219,11 +219,11 @@ export function PresentationLayer({ panel, feed, signals = [], onOpenReader }: {
     case 'time-series':
       return <TimeSeriesChart panelId={panel.id} signals={signals} />;
     case 'heatmap':
-      return <GridHeatmap panelId={panel.id} signals={signals} />;
+      return <GridHeatmap panelId={panel.id} />;
     case 'radar':
-      return <RadarChart panelId={panel.id} signals={signals} />;
+      return <RadarChart panelId={panel.id} />;
     case 'gauge':
-      return <TelemetryGauge panelId={panel.id} signals={signals} />;
+      return <TelemetryGauge panelId={panel.id} />;
     case 'pie':
       return <MarketShareView panelId={panel.id} signals={signals} />;
     case 'ticker':
@@ -270,17 +270,19 @@ export function EventTickerContent({ feed, signals = [], onOpenReader }: EventTi
       )}
       {allItems.slice(0, 20).map((item: any, i) => {
         const isExpanded = expandedIdx === item.uniqueId;
-        const score = item.impact_score || 50;
+        const score = Number.isFinite(Number(item.impact_score))
+          ? Number(item.impact_score)
+          : null;
 
         return (
           <div key={item.uniqueId} className={`group/item border-b border-white/5 hover:bg-white/[0.02] transition-colors relative ${!item.isRaw ? 'bg-violet-500/[0.03]' : ''}`}>
             {/* Impact Bar */}
             <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white/5 overflow-hidden">
-               <div 
+               <div
                  className={`w-full transition-all duration-1000 ${
-                   score > 80 ? 'bg-rose-500' : score > 50 ? 'bg-amber-500' : 'bg-emerald-500'
-                 }`} 
-                 style={{ height: `${score}%` }}
+                   score !== null && score > 80 ? 'bg-rose-500' : score !== null && score > 50 ? 'bg-amber-500' : 'bg-emerald-500'
+                 }`}
+                 style={{ height: `${score ?? 0}%` }}
                />
             </div>
 
@@ -291,9 +293,14 @@ export function EventTickerContent({ feed, signals = [], onOpenReader }: EventTi
                     <span className={`text-[8px] font-black px-1 rounded uppercase tracking-tighter ${item.isRaw ? 'bg-white/5 text-white/30' : 'bg-violet-500 text-white shadow-sm'}`}>
                       {item.isRaw ? 'RAW_FEED' : 'AI_SIGNAL'}
                     </span>
-                    <span className="text-[9px] font-mono text-white/30 uppercase">
-                      {item.source_name || 'UNKNOWN_SRC'} • {item.published_at ? new Date(item.published_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'NOW'}
-                    </span>
+	                    <span className="text-[9px] font-mono text-white/30 uppercase">
+	                      {item.source_name || 'UNKNOWN_SRC'} • {item.published_at ? new Date(item.published_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'TIME_UNKNOWN'}
+	                    </span>
+	                    {item.verification_status === 'legacy_unverified' && (
+	                      <span className="text-[7px] font-black px-1 rounded border border-amber-500/30 text-amber-400/80 uppercase">
+	                        legacy unverified
+	                      </span>
+	                    )}
                   </div>
                   <h4 
                     onClick={(e) => {
@@ -321,7 +328,7 @@ export function EventTickerContent({ feed, signals = [], onOpenReader }: EventTi
                 </div>
 
                 <div className="text-[10px] font-black font-mono text-white/40 pt-0.5">
-                  {score}<span className="text-[8px] opacity-30">/100</span>
+	                  {score ?? '--'}{score !== null && <span className="text-[8px] opacity-30">/100</span>}
                 </div>
               </div>
 

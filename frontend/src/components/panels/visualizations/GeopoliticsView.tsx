@@ -74,7 +74,7 @@ export const GeopoliticsView: React.FC<{ panelId: string; signals?: any[] }> = (
       <div className="flex justify-between items-center mb-1">
         <div className="flex flex-col">
           <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-            Last Sync: {new Date().toLocaleTimeString()}
+            Database snapshot
           </span>
           <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1">
             出海合规与风险雷达
@@ -82,7 +82,7 @@ export const GeopoliticsView: React.FC<{ panelId: string; signals?: any[] }> = (
         </div>
         <div className="flex items-center gap-1">
            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-           <span className="text-[7px] text-white/30 uppercase font-black">Live Monitoring</span>
+           <span className="text-[7px] text-white/30 uppercase font-black">Monitoring snapshot</span>
         </div>
       </div>
 

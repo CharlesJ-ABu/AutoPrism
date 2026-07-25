@@ -3,10 +3,10 @@
 export const API_BASE_URL = '/api/v1';
 
 // ============================================
-// Ultra Deep Mock Data (36 Panels with Source Binding)
+// Built-in V1 panel layout
 // ============================================
 
-const MOCK_PANELS = [
+const DEFAULT_PANELS = [
   // 1. 宏观决策视角
   { id: 'p1', title: '全球汽车政策雷达', type: 'list', presentation_type: 'ticker', is_visible: true, role: '宏观决策', size: '1x1', data_source_id: '36Kr_AUTO' },
   { id: 'p2', title: '车型调价预警', type: 'list', presentation_type: 'ticker', is_visible: true, role: '宏观决策', size: '1x1', data_source_id: 'Jiemian_News' },
@@ -42,9 +42,9 @@ const MOCK_PANELS = [
 ];
 
 export const panels = { 
-  list: async (...args: any[]) => MOCK_PANELS,
-  public: async (...args: any[]) => MOCK_PANELS, 
-  create: async (d: any, ...args: any[]) => ({ ...d, id: Math.random().toString() }), 
+  list: async (...args: any[]) => DEFAULT_PANELS,
+  public: async (...args: any[]) => DEFAULT_PANELS,
+  create: async (d: any, ...args: any[]) => ({ ...d, id: crypto.randomUUID() }),
   update: async (...args: any[]) => ({}), 
   delete: async (...args: any[]) => ({}) 
 };
@@ -61,7 +61,18 @@ export const ai = {
   interpretOta: async (...args: any[]) => ({ vehicle_model: 'Tesla Model 3/Y', update_type: '智驾与视觉泊车', description: '本次更新引入了全新的端到端视觉泊车方案，显著提升了在弱光和非标准车位的识别能力。' })
 };
 export const auth = { login: async (...args: any[]) => ({}), register: async (...args: any[]) => ({}), me: async (...args: any[]) => ({}) };
-export const sources = { list: async (...args: any[]) => [], subscriptions: async (...args: any[]) => [], subscribe: async (...args: any[]) => ({}), unsubscribe: async (...args: any[]) => ({}) };
+const unsupportedSourceMutation = async (..._args: any[]): Promise<never> => {
+  throw new Error('V1 本地版尚未提供数据源编辑接口');
+};
+export const sources = {
+  list: async (...args: any[]) => [],
+  subscriptions: async (...args: any[]) => [],
+  subscribe: async (...args: any[]) => ({}),
+  unsubscribe: async (...args: any[]) => ({}),
+  create: unsupportedSourceMutation,
+  update: unsupportedSourceMutation,
+  delete: unsupportedSourceMutation,
+};
 export const layouts = { list: async (...args: any[]) => [], save: async (...args: any[]) => ({}), apply: async (...args: any[]) => ({}), delete: async (...args: any[]) => ({}) };
 export const tags = { list: async (...args: any[]) => [], withCounts: async (...args: any[]) => [], categories: async (...args: any[]) => [], create: async (...args: any[]) => ({}), update: async (...args: any[]) => ({}), delete: async (...args: any[]) => ({}) };
 export const system = { getSchedulerConfig: async (...args: any[]) => ({ mode: 'auto', fetch_interval: 60, process_interval: 15 }), updateSchedulerConfig: async (...args: any[]) => ({}), forceFetch: async (...args: any[]) => ({}), forceProcess: async (...args: any[]) => ({}), resetDatabase: async (...args: any[]) => ({}) };

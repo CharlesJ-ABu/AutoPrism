@@ -263,7 +263,7 @@ export const useSignalStore = create<SignalStore>((set) => ({
   loadSignals: async () => {
     set({ isLoading: true });
     try {
-      const res = await fetch('http://127.0.0.1:8001/api/v1/intel/');
+	      const res = await fetch('/api/v1/intel/');
       if (res.ok) {
         const data = await res.json();
         set({ signals: data, isLoading: false });

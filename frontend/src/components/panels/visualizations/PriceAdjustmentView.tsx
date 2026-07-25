@@ -64,7 +64,7 @@ export const PriceAdjustmentView: React.FC<{ panelId: string; signals?: any[] }>
 		<div className="h-full w-full flex flex-col p-2 bg-black/40 rounded-lg border border-white/5 space-y-2 overflow-y-auto no-scrollbar">
 			<div className="flex justify-between items-center mb-1">
 				<span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-					Last Sync: {new Date().toLocaleTimeString()}
+					Database snapshot
 				</span>
 				<span className="text-[7px] text-white/20 uppercase font-black">24H Active Scan</span>
 			</div>

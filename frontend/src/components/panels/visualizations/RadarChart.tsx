@@ -27,19 +27,17 @@ export const RadarChart: React.FC<RadarChartProps> = ({ panelId }) => {
         m.ux || 50
       ];
     }
-    // Fallback to pseudo-random if no signal found
-    const seed = parseInt(panelId.replace('p', ''), 10) || 1;
-    return [
-      80 + Math.sin(seed) * 10,
-      60 + Math.cos(seed) * 10,
-      70 + Math.sin(seed * 2) * 10,
-      85 + Math.cos(seed * 0.5) * 10,
-      75 + Math.sin(seed * 1.5) * 10,
-      90 + Math.cos(seed * 3) * 10,
-    ];
+    return null;
   };
 
   const chartData = generateData();
+  if (!chartData) {
+    return (
+      <div className="h-full min-h-[120px] flex items-center justify-center px-4 text-center text-white/20 text-[10px] tracking-widest uppercase">
+        暂无可验证的雷达指标
+      </div>
+    );
+  }
 
   const option = {
     tooltip: {
@@ -83,7 +81,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({ panelId }) => {
     <div className="w-full h-full relative flex flex-col p-1">
       <div className="flex justify-between items-center mb-1 px-1">
         <span className="text-[7px] font-mono text-white/20 uppercase tracking-tighter flex items-center gap-1">
-          Last Sync: 14:10:22
+          Snapshot: {new Date(relevantSignal.created_at).toLocaleString()}
         </span>
       </div>
       <div className="flex-1 min-h-0">

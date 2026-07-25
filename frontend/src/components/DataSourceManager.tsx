@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useSourcesStore } from '@/stores';
 import { Button, GlassCard, Input } from '@/components/ui';
-import { useNavigate } from 'react-router-dom';
 import { sources as sourcesApi } from '@/lib/api';
 import { useAuthStore } from '@/stores';
 import type { DataSource } from '@/types';
@@ -12,7 +11,7 @@ import type { DataSource } from '@/types';
 export default function DataSourceManager() {
   const { sources, loadSources, loadSubscriptions, subscriptions } = useSourcesStore();
   const { token } = useAuthStore();
-  const navigate = useNavigate();
+  const navigate = (path: string) => window.location.assign(path);
   const [showForm, setShowForm] = useState(false);
   const [editingSource, setEditingSource] = useState<DataSource | null>(null);
   const [form, setForm] = useState({ name: '', type: 'rss', url: '', botId: '', apiToken: '' });

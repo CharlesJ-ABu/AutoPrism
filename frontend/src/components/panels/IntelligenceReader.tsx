@@ -120,7 +120,7 @@ export const IntelligenceReader: React.FC<IntelligenceReaderProps> = ({ item, on
           <div className="flex flex-col">
             <span className="text-[10px] text-white/40 font-mono tracking-tighter uppercase">Intelligent Strategic Synthesis Engine v2.0</span>
             <p className="text-[9px] text-white/20 italic">
-              * 此报告由 AutoPrism 战略引擎基于多维实时数据聚合生成，用于决策辅助参考。
+              * 此报告由 AutoPrism 战略引擎基于当前数据库快照聚合生成，用于决策辅助参考。
             </p>
           </div>
           {item.source_url && !isStrategic && (

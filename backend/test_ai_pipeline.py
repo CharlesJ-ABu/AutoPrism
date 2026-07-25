@@ -19,7 +19,7 @@ class MockSession:
 
 from app.services.ai_service import AIService
 
-async def test_denoising():
+async def run_denoising():
     print(f"=== Testing AutoPrism AI Denoising Pipeline ===")
     print(f"Model: {settings.AI_MODEL}")
     print(f"API Base: {settings.AI_API_BASE}")
@@ -56,4 +56,4 @@ async def test_denoising():
         print("Please check your .env configuration and network connection.")
 
 if __name__ == "__main__":
-    asyncio.run(test_denoising())
+    asyncio.run(run_denoising())

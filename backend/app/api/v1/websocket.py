@@ -1,7 +1,8 @@
 # Tech Nebula - WebSocket Route
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.api.v1.ws import manager
+from app.core.websocket import manager
 from app.core.security import decode_access_token
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -9,13 +10,15 @@ router = APIRouter()
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for real-time feed updates."""
-    # Optionally verify token from query param
     token = websocket.query_params.get("token")
     if token:
         payload = decode_access_token(token)
         if not payload or payload.get("sub") != user_id:
             await websocket.close(code=4001)
             return
+    elif not settings.LOCAL_MODE or user_id != "local":
+        await websocket.close(code=4001)
+        return
 
     await manager.connect(websocket, user_id)
     try:

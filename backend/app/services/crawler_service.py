@@ -1,11 +1,11 @@
 # AutoPrism - Intelligence Crawler Service (Standardized & AI-Linked)
 import asyncio
+import hashlib
 from typing import List
-from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
-from app.models.sql import RawIntelligence, IntelligenceStatus
-from app.api.v1.ws import manager
+from sqlalchemy import select
+from app.models.sql import RawIntelligence
+from app.core.websocket import manager
 
 class CrawlerService:
     def __init__(self, db: AsyncSession):
@@ -16,29 +16,7 @@ class CrawlerService:
         from app.services.scrapers.specialized import SpecializedScraper
         from app.services.ai_service import AIService
 
-        # --- 1. 数据库架构自动校验 ---
-        try:
-            await self.db.execute(text("ALTER TABLE raw_intelligence ADD COLUMN IF NOT EXISTS target_panel_ids JSONB DEFAULT '[]'::jsonb;"))
-            await self.db.execute(text("""
-                CREATE TABLE IF NOT EXISTS intelligence_info (
-                    id UUID PRIMARY KEY,
-                    raw_id UUID REFERENCES raw_intelligence(id) ON DELETE CASCADE,
-                    title_brief VARCHAR(255) NOT NULL,
-                    target_panel_ids JSONB DEFAULT '[]'::jsonb,
-                    impact_score INTEGER DEFAULT 50,
-                    sentiment FLOAT DEFAULT 0.0,
-                    metrics JSONB DEFAULT '{}'::jsonb,
-                    geolocation JSONB,
-                    involved_entities JSONB DEFAULT '[]'::jsonb,
-                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
-            """))
-            await self.db.commit()
-        except Exception as e:
-            await self.db.rollback()
-            await manager.broadcast({"type": "log", "message": f"⚠️ DB Fix Error: {str(e)}", "level": "warning"})
-
-        # --- 2. 准备任务清单 ---
+        # Database schema is managed by Alembic; runtime collection never mutates DDL.
         PANEL_TASKS = [
             {"id": "p1", "name": "全球汽车政策雷达", "scraper": SpecializedScraper.fetch_policy_radar},
             {"id": "p2", "name": "车型调价预警", "scraper": SpecializedScraper.fetch_price_adjustments},
@@ -47,7 +25,7 @@ class CrawlerService:
             {"id": "p14", "name": "重大断链风险预警", "scraper": SpecializedScraper.fetch_supply_chain_risks},
             {"id": "p21", "name": "碳配额与排放法规监测", "scraper": SpecializedScraper.fetch_carbon_compliance},
             {"id": "p22", "name": "全球能源补能网络版图", "scraper": SpecializedScraper.fetch_energy_network},
-            {"id": "p23", "name": "主要市场消费信心指数", "scraper": SpecializedScraper.fetch_macro_indices},
+            {"id": "p23", "name": "主要市场消费信心指数", "scraper": SpecializedScraper.fetch_consumer_confidence},
             {"id": "p24", "name": "自动驾驶法律框架准入", "scraper": SpecializedScraper.fetch_ad_legal_framework},
             {"id": "p4", "name": "重点车型 OTA 演变追踪", "scraper": SpecializedScraper.fetch_ota_evolution},
             {"id": "p5", "name": "技术路径演进图谱", "scraper": SpecializedScraper.fetch_tech_roadmap},
@@ -85,24 +63,7 @@ class CrawlerService:
             try:
                 # 1. AI 全球搜索 (存入 L1)
                 raw_items = await task["scraper"](ai_expert)
-                new_count = 0
-                for item in raw_items:
-                    tags = set(item.target_panel_ids or [])
-                    tags.add(panel_id)
-                    item.target_panel_ids = list(tags)
-
-                    stmt = select(RawIntelligence).where(RawIntelligence.source_url == item.source_url)
-                    existing = await self.db.execute(stmt)
-                    existing_item = existing.scalar_one_or_none()
-
-                    if existing_item:
-                        current_tags = set(existing_item.target_panel_ids or [])
-                        existing_item.target_panel_ids = list(current_tags.union(tags))
-                    else:
-                        self.db.add(item)
-                        new_count += 1
-
-                await self.db.commit()
+                new_count = await self._persist_snapshots(raw_items, panel_id)
                 total_new += new_count
                 await manager.broadcast({"type": "log", "message": f"✅ {panel_id} 原始情报捕获 (+{new_count})，立即启动 AI 解读...", "level": "success"})
 
@@ -127,7 +88,7 @@ class CrawlerService:
                 await self.db.rollback()
                 await manager.broadcast({"type": "log", "message": f"❌ {panel_id} 链路中断: {str(e)}", "level": "error"})
 
-        await manager.broadcast({"type": "log", "message": "🏁 全量情报链路同步圆满结束，27 个面板已全部进入实时监控状态。", "level": "info"})
+        await manager.broadcast({"type": "log", "message": "🏁 全量情报链路同步结束，27 个面板已完成本次数据库快照更新。", "level": "info"})
         return total_new
 
     async def run_panel_sync(self, target_panel_id: str):
@@ -175,23 +136,7 @@ class CrawlerService:
             # 1. 抓取 (AI 搜索)
             await manager.broadcast({"type": "log", "message": f"🔍 阶段 1/2: 正在委托 AI 引擎进行全球深度搜索...", "level": "info"})
             raw_items = await task["scraper"](ai_expert)
-            new_count = 0
-            for item in raw_items:
-                tags = set(item.target_panel_ids or [])
-                tags.add(target_panel_id)
-                item.target_panel_ids = list(tags)
-
-                stmt = select(RawIntelligence).where(RawIntelligence.source_url == item.source_url)
-                res = await self.db.execute(stmt)
-                existing_item = res.scalar_one_or_none()
-                if existing_item:
-                    current_tags = set(existing_item.target_panel_ids or [])
-                    existing_item.target_panel_ids = list(current_tags.union(tags))
-                else:
-                    self.db.add(item)
-                    new_count += 1
-
-            await self.db.commit()
+            new_count = await self._persist_snapshots(raw_items, target_panel_id)
             await manager.broadcast({"type": "log", "message": f"📥 阶段 1/2 完成: 成功捕获 {new_count} 条潜在关联情报。", "level": "success"})
 
             # 2. AI 处理 (解读)
@@ -208,3 +153,37 @@ class CrawlerService:
             await self.db.rollback()
             await manager.broadcast({"type": "log", "message": f"❌ 面板 {target_panel_id} 同步失败: {str(e)}", "level": "error"})
             return False
+
+    async def _persist_snapshots(
+        self, raw_items: List[RawIntelligence], panel_id: str
+    ) -> int:
+        """Append changed source snapshots without overwriting prior revisions."""
+        new_count = 0
+        for item in raw_items:
+            tags = set(item.target_panel_ids or [])
+            tags.add(panel_id)
+            item.target_panel_ids = sorted(tags)
+            item.content_hash = hashlib.sha256(
+                (item.raw_content or "").encode("utf-8")
+            ).hexdigest()
+
+            stmt = (
+                select(RawIntelligence)
+                .where(RawIntelligence.source_url == item.source_url)
+                .order_by(RawIntelligence.revision.desc())
+                .limit(1)
+            )
+            latest = (await self.db.execute(stmt)).scalar_one_or_none()
+            if latest and latest.content_hash == item.content_hash:
+                continue
+            if latest:
+                item.revision = latest.revision + 1
+                item.supersedes_id = latest.id
+            else:
+                item.revision = 1
+
+            self.db.add(item)
+            new_count += 1
+
+        await self.db.commit()
+        return new_count
