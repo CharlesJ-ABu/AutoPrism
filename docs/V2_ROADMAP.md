@@ -1,5 +1,15 @@
 # AutoPrism V2 Delivery Roadmap
 
+## V2.0 release status
+
+The local-first V2.0 milestone is complete on branch `v2`. The current release
+includes the V1-continuity cockpit, immutable dashboard lifecycle, compliant
+direct-source operations, auditable INFO/calculation/validation/review
+workflows, append-only trust eligibility and stored-input-only deterministic L2.
+See [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for gates and known
+limitations. Deferred work below does not block the truthful local release and
+is not represented as complete in the UI.
+
 ## Status at branch creation
 
 V1 is a visual prototype with one batch of legacy data. Its frontend does not
@@ -63,7 +73,10 @@ schema-bound extraction are operational.
 
 Exit: three panels run end-to-end on real data in Docker.
 
-Completed with three live NHTSA API panels and a provenance UI.
+Completed with three live NHTSA API panels and a provenance UI. The L2 service
+now accepts only current ELIGIBLE observation heads. The current reference
+dataset lacks independent-source validation, so its UI truthfully reports L2
+unavailable instead of generating an unverified insight.
 
 ## Phase 4 — Dynamic dashboards (foundation complete)
 
