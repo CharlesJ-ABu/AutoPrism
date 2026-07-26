@@ -1,14 +1,12 @@
-import asyncio
-from app.core.database import async_engine, Base
-from app.models.sql import RawIntelligence, StructuredSignal
+"""Disabled legacy reset entry point.
 
-async def reset_schema():
-    print("Dropping tables...")
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        print("Creating tables...")
-        await conn.run_sync(Base.metadata.create_all)
-    print("Schema reset successfully.")
+V2 evidence and history are append-only. Use Alembic migrations and a separate
+disposable database for tests; never reset the preserved local database.
+"""
+
 
 if __name__ == "__main__":
-    asyncio.run(reset_schema())
+    raise SystemExit(
+        "Database reset is disabled in AutoPrism V2. "
+        "Use Alembic against a disposable test database."
+    )

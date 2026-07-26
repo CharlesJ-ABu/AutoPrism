@@ -16,8 +16,10 @@ from app.models.evidence import (
     ReviewCase,
     ReviewDecision,
     ReviewState,
+    TrustAssessment,
     ValidationRun,
 )
+from app.services.trust_service import TrustService
 from app.services.verification_service import VerificationService
 
 
@@ -43,6 +45,11 @@ class DecisionRequest(BaseModel):
     decision: dict[str, Any] = Field(min_length=1)
     decided_by: str = Field(min_length=1, max_length=255)
     supersedes_id: uuid.UUID | None = None
+
+
+class AssessmentRequest(BaseModel):
+    observation_id: uuid.UUID
+    validation_run_id: uuid.UUID | None = None
 
 
 @router.post("/validate")
@@ -239,6 +246,109 @@ async def list_reviews(
                     if latest
                     else None
                 ),
+            }
+        )
+    return output
+
+
+@router.post("/assessments", status_code=201)
+async def assess_observation(
+    payload: AssessmentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        assessment = await TrustService(db).assess(
+            observation_id=payload.observation_id,
+            validation_run_id=payload.validation_run_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "id": str(assessment.id),
+        "observation_id": str(assessment.observation_id),
+        "validation_run_id": (
+            str(assessment.validation_run_id)
+            if assessment.validation_run_id
+            else None
+        ),
+        "calculation_run_id": (
+            str(assessment.calculation_run_id)
+            if assessment.calculation_run_id
+            else None
+        ),
+        "review_decision_id": (
+            str(assessment.review_decision_id)
+            if assessment.review_decision_id
+            else None
+        ),
+        "eligible": assessment.eligible,
+        "currently_eligible": assessment.eligible,
+        "reason_codes": assessment.reason_codes,
+        "policy_version": assessment.policy_version,
+        "details": assessment.details,
+        "created_at": assessment.created_at,
+    }
+
+
+@router.get("/assessments")
+async def list_assessments(
+    panel_version_key: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = (
+        select(TrustAssessment, MetricObservation)
+        .join(
+            MetricObservation,
+            TrustAssessment.observation_id == MetricObservation.id,
+        )
+    )
+    if panel_version_key:
+        statement = statement.where(
+            MetricObservation.panel_version_key == panel_version_key
+        )
+    rows = (
+        await db.execute(
+            statement.order_by(desc(TrustAssessment.created_at)).limit(limit)
+        )
+    ).all()
+    output = []
+    for assessment, observation in rows:
+        replacement = (
+            await db.execute(
+                select(MetricObservation.id)
+                .where(MetricObservation.supersedes_id == observation.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        output.append(
+            {
+                "id": str(assessment.id),
+                "observation_id": str(assessment.observation_id),
+                "metric_key": observation.metric_key,
+                "validation_run_id": (
+                    str(assessment.validation_run_id)
+                    if assessment.validation_run_id
+                    else None
+                ),
+                "calculation_run_id": (
+                    str(assessment.calculation_run_id)
+                    if assessment.calculation_run_id
+                    else None
+                ),
+                "review_decision_id": (
+                    str(assessment.review_decision_id)
+                    if assessment.review_decision_id
+                    else None
+                ),
+                "eligible": assessment.eligible,
+                "currently_eligible": assessment.eligible and replacement is None,
+                "reason_codes": assessment.reason_codes,
+                "policy_version": assessment.policy_version,
+                "details": assessment.details,
+                "created_at": assessment.created_at,
             }
         )
     return output

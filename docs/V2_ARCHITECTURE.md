@@ -34,6 +34,14 @@ deferred. Current collectors target HTML, PDF, CSV/Excel, RSS, and JSON APIs.
 - **L2**: strategic insights generated only from stored, eligible L1/INFO
   records. L2 does not browse or silently add external facts.
 
+Eligibility and L2 are append-only. `TrustAssessment` evaluates one current
+observation head under a frozen policy and references its validation,
+calculation and review records. `L2InsightInput` stores ordered foreign keys to
+both the observation and the assessment; `L2Insight` freezes the input hash,
+deterministic engine/contract versions and output. A later observation
+correction leaves historical L2 intact but makes the old assessment stale for
+new runs.
+
 Existing V1 records are retained as `legacy_unverified` and are excluded from
 trusted calculations and L2 by default.
 

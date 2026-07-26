@@ -76,3 +76,18 @@ edition and is not a merge target.
   evidence, validation, human approval and future trusted eligibility.
 - Added accessible dialog semantics, Escape closing and desktop/mobile trust
   workspace states.
+
+### M5 — Trust eligibility and stored-input L2
+
+- Added append-only trust assessments that replay artifact/text integrity,
+  current revision status, independent-source validation and calculation
+  lineage without mutating observations.
+- Added immutable, normalized L2 input references to eligible observations and
+  assessments, plus deterministic input hashes and engine/contract versions.
+- Added a stored-input-only L2 evidence summary. It never browses, predicts,
+  fills missing values or delegates mathematics to a model.
+- Added truthful eligibility/L2 UI. The real reference dashboard remains at
+  zero eligible inputs and exposes a disabled unavailable state.
+- Added integration coverage for eligibility, ineligible same-source data,
+  idempotent L2 creation and invalidation after observation revision.
+- Disabled legacy destructive reset scripts and added the release checklist.

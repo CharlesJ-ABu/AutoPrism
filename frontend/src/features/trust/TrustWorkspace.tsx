@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calculator, CheckCircle2, GitCompareArrows, History, UserCheck } from 'lucide-react';
+import { BadgeCheck, Calculator, CheckCircle2, GitCompareArrows, History, UserCheck } from 'lucide-react';
 
 import { formatDate } from '../../lib/format';
 import {
   api,
   type CalculationRun,
+  type L2Insight,
   type MetricObservation,
   type ObservationRevision,
   type ReviewCase,
   type ReviewDecision,
+  type TrustAssessment,
   type ValidationRun,
 } from '../../lib/v2-api';
 import { Button, EmptyState, ErrorState, LoadingState, Status } from '../../components/ui';
 
-type TrustTab = 'observations' | 'calculations' | 'validations' | 'reviews';
+type TrustTab = 'observations' | 'calculations' | 'validations' | 'reviews' | 'eligibility';
 
 const stateTone = (state: string) => {
   if (state === 'verified' || state === 'passed' || state === 'approved') return 'ok';
@@ -33,6 +35,8 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
   const [calculations, setCalculations] = useState<CalculationRun[]>([]);
   const [validations, setValidations] = useState<ValidationRun[]>([]);
   const [reviews, setReviews] = useState<ReviewCase[]>([]);
+  const [assessments, setAssessments] = useState<TrustAssessment[]>([]);
+  const [insights, setInsights] = useState<L2Insight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -40,19 +44,31 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
     setLoading(true);
     setError('');
     try {
-      const [nextObservations, nextRevisions, nextCalculations, nextValidations, nextReviews] =
+      const [
+        nextObservations,
+        nextRevisions,
+        nextCalculations,
+        nextValidations,
+        nextReviews,
+        nextAssessments,
+        nextInsights,
+      ] =
         await Promise.all([
           api.listObservations(panelVersionKey),
           api.listObservationRevisions(panelVersionKey),
           api.listCalculations(panelVersionKey),
           api.listValidations(panelVersionKey),
           api.listReviews(panelVersionKey),
+          api.listTrustAssessments(panelVersionKey),
+          api.listInsights(),
         ]);
       setObservations(nextObservations);
       setRevisions(nextRevisions);
       setCalculations(nextCalculations);
       setValidations(nextValidations);
       setReviews(nextReviews);
+      setAssessments(nextAssessments);
+      setInsights(nextInsights);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '可信链读取失败');
     } finally {
@@ -77,8 +93,8 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
       <div className="drawer-section-title">
         <h3>可信度工作区</h3>
         <div className="trust-summary">
-          <Status tone={observations.some((item) => item.trust_state === 'verified') ? 'ok' : 'warning'}>
-            {observations.filter((item) => item.trust_state === 'verified').length} VERIFIED
+          <Status tone={assessments.some((item) => item.currently_eligible) ? 'ok' : 'warning'}>
+            {assessments.filter((item) => item.currently_eligible).length} ELIGIBLE
           </Status>
           <Status tone={reviews.some((item) => !item.latest_decision) ? 'warning' : 'neutral'}>
             {reviews.filter((item) => !item.latest_decision).length} OPEN REVIEW
@@ -101,6 +117,9 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
         <button className={tab === 'reviews' ? 'active' : ''} onClick={() => setTab('reviews')}>
           <UserCheck size={14} /> 审核 · {reviews.length}
         </button>
+        <button className={tab === 'eligibility' ? 'active' : ''} onClick={() => setTab('eligibility')}>
+          <BadgeCheck size={14} /> 资格/L2 · {assessments.length}
+        </button>
       </nav>
 
       {tab === 'observations' && (
@@ -118,6 +137,15 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
         <ValidationWorkspace observations={observations} runs={validations} onChanged={load} />
       )}
       {tab === 'reviews' && <ReviewWorkspace cases={reviews} onChanged={load} />}
+      {tab === 'eligibility' && (
+        <EligibilityWorkspace
+          observations={observations}
+          validations={validations}
+          assessments={assessments}
+          insights={insights}
+          onChanged={load}
+        />
+      )}
     </section>
   );
 }
@@ -491,6 +519,172 @@ function ReviewWorkspace({ cases, onChanged }: { cases: ReviewCase[]; onChanged:
           </Button>
         </article>
       ))}
+    </div>
+  );
+}
+
+function EligibilityWorkspace({
+  observations,
+  validations,
+  assessments,
+  insights,
+  onChanged,
+}: {
+  observations: MetricObservation[];
+  validations: ValidationRun[];
+  assessments: TrustAssessment[];
+  insights: L2Insight[];
+  onChanged: () => Promise<void>;
+}) {
+  const [validationByObservation, setValidationByObservation] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<string[]>([]);
+  const [actor, setActor] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState('');
+
+  const latestByObservation = useMemo(() => {
+    const output = new Map<string, TrustAssessment>();
+    assessments.forEach((assessment) => {
+      if (!output.has(assessment.observation_id)) output.set(assessment.observation_id, assessment);
+    });
+    return output;
+  }, [assessments]);
+  const eligibleObservations = observations.filter(
+    (observation) => latestByObservation.get(observation.id)?.currently_eligible,
+  );
+  const observationIds = new Set(observations.map((item) => item.id));
+  const panelInsights = insights.filter((insight) =>
+    insight.inputs.some((input) => observationIds.has(input.observation_id)),
+  );
+
+  const assess = async (observation: MetricObservation) => {
+    setSaving(`assessment:${observation.id}`);
+    setError('');
+    try {
+      const validationId = validationByObservation[observation.id];
+      await api.assessObservation({
+        observation_id: observation.id,
+        ...(validationId ? { validation_run_id: validationId } : {}),
+      });
+      await onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '资格评估失败');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const createInsight = async () => {
+    setSaving('insight');
+    setError('');
+    try {
+      await api.createInsight({ observation_ids: selected, created_by: actor });
+      setSelected([]);
+      await onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'L2 摘要创建失败');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  return (
+    <div className="trust-stack">
+      <div className="trust-form">
+        <h4>Append-only 可信资格评估</h4>
+        <p>
+          评估会重放原始文件与片段哈希、检查当前修订头、验证状态、独立来源数和计算记录。
+          它创建新评估，不修改观测；人工批准不能覆盖冲突验证。
+        </p>
+        {observations.length ? observations.map((observation) => {
+          const candidates = validations.filter((run) => run.observation_ids.includes(observation.id));
+          const latest = latestByObservation.get(observation.id);
+          return (
+            <div className="eligibility-row" key={observation.id}>
+              <div>
+                <strong>{observation.metric_key}</strong>
+                <small>{observation.id.slice(0, 8)} · {String(observation.normalized_value.value ?? '未提供')} {observation.unit ?? ''}</small>
+              </div>
+              <select
+                aria-label={`${observation.metric_key} 的验证运行`}
+                value={validationByObservation[observation.id] ?? ''}
+                onChange={(event) => setValidationByObservation((current) => ({
+                  ...current,
+                  [observation.id]: event.target.value,
+                }))}
+              >
+                <option value="">未选择验证（将记录不合格）</option>
+                {candidates.map((run) => (
+                  <option key={run.id} value={run.id}>{run.state} · {run.id.slice(0, 8)}</option>
+                ))}
+              </select>
+              <Status tone={latest?.currently_eligible ? 'ok' : 'warning'}>
+                {latest ? (latest.currently_eligible ? 'ELIGIBLE' : 'INELIGIBLE') : 'NOT ASSESSED'}
+              </Status>
+              <Button
+                variant="secondary"
+                disabled={saving === `assessment:${observation.id}`}
+                onClick={() => void assess(observation)}
+              >
+                {saving === `assessment:${observation.id}` ? '评估中…' : '运行评估'}
+              </Button>
+            </div>
+          );
+        }) : <EmptyState title="没有可评估观测" description="先从成功快照执行结构化抽取。" />}
+      </div>
+
+      {assessments.length > 0 && (
+        <div className="lineage-list">
+          <h4>资格评估历史</h4>
+          {assessments.map((assessment) => (
+            <div key={assessment.id}>
+              <Status tone={assessment.currently_eligible ? 'ok' : 'warning'}>
+                {assessment.currently_eligible ? 'CURRENT ELIGIBLE' : 'INELIGIBLE / STALE'}
+              </Status>
+              <span>{assessment.metric_key} · {assessment.policy_version}</span>
+              <p>{assessment.reason_codes.join(' · ')} · {formatDate(assessment.created_at)}</p>
+              <p className="mono break">{jsonValue(assessment.details)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="trust-form">
+        <h4>存储输入限定的 L2 摘要</h4>
+        <p>
+          只允许选择当前 ELIGIBLE 观测。输出是确定性证据摘要，不浏览、不补事实、不预测，也不执行模型数学。
+        </p>
+        {eligibleObservations.length ? (
+          <ObservationSelector observations={eligibleObservations} selected={selected} onChange={setSelected} />
+        ) : (
+          <EmptyState
+            title="L2 当前不可用"
+            description="当前面板没有通过 trust-eligibility-v1 的修订头；系统不会用 UNVERIFIED 数据生成洞察。"
+          />
+        )}
+        <label>创建者（当前为自我声明）<input value={actor} onChange={(event) => setActor(event.target.value)} /></label>
+        {error && <p className="form-error">{error}</p>}
+        <Button
+          disabled={saving === 'insight' || !selected.length || !actor.trim()}
+          onClick={() => void createInsight()}
+        >
+          {saving === 'insight' ? '正在冻结…' : '生成并冻结 L2 证据摘要'}
+        </Button>
+      </div>
+
+      {panelInsights.length ? panelInsights.map((insight) => (
+        <article className="trust-record" key={insight.id}>
+          <header><strong>{insight.title}</strong><Status tone="ok">STORED INPUTS</Status></header>
+          <p className="insight-summary">{insight.output.summary}</p>
+          <dl className="detail-list compact">
+            <div><dt>输入哈希</dt><dd className="mono break">{insight.input_hash}</dd></div>
+            <div><dt>引擎</dt><dd>{insight.engine_version}</dd></div>
+            <div><dt>契约版本</dt><dd>{insight.prompt_version}</dd></div>
+            <div><dt>输入观测</dt><dd className="mono break">{insight.inputs.map((item) => item.observation_id).join(', ')}</dd></div>
+            <div><dt>创建者</dt><dd>{insight.created_by}（自我声明）</dd></div>
+          </dl>
+        </article>
+      )) : <EmptyState title="没有 L2 历史" description="只有满足当前资格策略的观测集合才能创建记录。" />}
     </div>
   );
 }

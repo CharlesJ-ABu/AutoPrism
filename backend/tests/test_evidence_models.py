@@ -6,11 +6,14 @@ from app.models.evidence import (
     CalculationRun,
     EvidenceArtifact,
     EvidenceFragment,
+    L2Insight,
+    L2InsightInput,
     MetricObservation,
     ObservationRevision,
     ReviewCase,
     ReviewDecision,
     SourceSnapshot,
+    TrustAssessment,
     ValidationRun,
     _reject_immutable_mutation,
 )
@@ -28,6 +31,9 @@ class EvidenceModelContractTests(unittest.TestCase):
             ValidationRun,
             ReviewCase,
             ReviewDecision,
+            TrustAssessment,
+            L2Insight,
+            L2InsightInput,
         )
         for model in immutable_models:
             with self.subTest(model=model.__name__):

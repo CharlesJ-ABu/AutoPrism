@@ -33,6 +33,7 @@ from app.models.sources import (
 from app.services.artifact_store import LocalArtifactStore
 from app.services.collection_service import CollectionService
 from app.services.extraction_service import ExtractionService
+from app.services.trust_service import TrustService
 from app.services.verification_service import VerificationService
 
 
@@ -402,6 +403,26 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(calculated.normalized_value, {"value": "85"})
                 self.assertEqual(calculation_run.engine_version, "decimal-v1")
+                trust_assessment = await TrustService(
+                    db,
+                    artifact_store=LocalArtifactStore(Path(temporary_directory)),
+                ).assess(
+                    observation_id=observation.id,
+                    validation_run_id=validation.id,
+                )
+                self.assertTrue(trust_assessment.eligible)
+                same_source_assessment = await TrustService(
+                    db,
+                    artifact_store=LocalArtifactStore(Path(temporary_directory)),
+                ).assess(
+                    observation_id=same_source.id,
+                    validation_run_id=same_source_validation.id,
+                )
+                self.assertFalse(same_source_assessment.eligible)
+                self.assertIn(
+                    "VALIDATION_NOT_PASSED",
+                    same_source_assessment.reason_codes,
+                )
 
                 transport = httpx.ASGITransport(app=app)
                 async with httpx.AsyncClient(
@@ -444,6 +465,52 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         if item["id"] == str(review_case.id)
                     )
                     self.assertEqual(selected_review["decisions"], [])
+
+                    assessments_response = await client.get(
+                        "/api/v2/verification/assessments",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(assessments_response.status_code, 200)
+                    selected_assessment = next(
+                        item
+                        for item in assessments_response.json()
+                        if item["id"] == str(trust_assessment.id)
+                    )
+                    self.assertTrue(selected_assessment["currently_eligible"])
+
+                    insight_response = await client.post(
+                        "/api/v2/insights",
+                        json={
+                            "observation_ids": [str(observation.id)],
+                            "created_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(
+                        insight_response.status_code,
+                        201,
+                        insight_response.text,
+                    )
+                    insight = insight_response.json()
+                    self.assertEqual(
+                        insight["engine_version"],
+                        "deterministic-stored-summary-v1",
+                    )
+                    self.assertEqual(
+                        insight["inputs"][0]["trust_assessment_id"],
+                        str(trust_assessment.id),
+                    )
+                    repeated_insight_response = await client.post(
+                        "/api/v2/insights",
+                        json={
+                            "observation_ids": [str(observation.id)],
+                            "created_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(repeated_insight_response.status_code, 201)
+                    self.assertEqual(
+                        repeated_insight_response.json()["id"],
+                        insight["id"],
+                    )
 
                     first_decision_response = await client.post(
                         f"/api/v2/verification/reviews/{review_case.id}/decisions",
@@ -526,6 +593,26 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         revisions_response.json()[0]["replacement_observation_id"],
                         str(replacement.id),
                     )
+
+                    stale_assessments_response = await client.get(
+                        "/api/v2/verification/assessments",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    stale_assessment = next(
+                        item
+                        for item in stale_assessments_response.json()
+                        if item["id"] == str(trust_assessment.id)
+                    )
+                    self.assertFalse(stale_assessment["currently_eligible"])
+
+                    stale_insight_response = await client.post(
+                        "/api/v2/insights",
+                        json={
+                            "observation_ids": [str(observation.id)],
+                            "created_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(stale_insight_response.status_code, 422)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ These states are independent and must never be collapsed into one badge:
 5. `human_approved`: an append-only review decision records a rationale and
    actor. Until authentication is connected, the actor is explicitly
    self-asserted and is not identity-verified.
-6. `trusted_eligible`: a future append-only trust assessment confirms every
+6. `trusted_eligible`: an append-only trust assessment confirms every current
    policy prerequisite. V2 does not infer this state from Schema validity.
 7. `legacy_unverified`: preserved V1 data excluded from V2 trusted
    calculations, maps and L2 generation unless it is re-collected through V2.
@@ -96,9 +96,10 @@ The run freezes source identities, independent-source count, tolerances,
 minimum/maximum/spread, rule version and result. Conflict or insufficient
 independence creates an immutable review case.
 
-A passed validation does not mutate an observation to VERIFIED. A later
-milestone must add append-only trust assessments before `trusted_eligible`
-exists.
+A passed validation does not mutate an observation to VERIFIED. The
+`trust-eligibility-v1` assessment separately replays artifact/fragment
+integrity, current-head status, validation independence and calculation
+lineage, then records an append-only eligible/ineligible decision.
 
 ## Human review and revision history
 
@@ -113,10 +114,14 @@ cryptographic identity proof.
 
 ## L2 use policy
 
-L2 may analyze only database content and must persist the complete set of input
-observation/revision/calculation/validation IDs, input hash, model/prompt
-versions and supersession relationship. No current V2 endpoint is allowed to
-claim trusted L2 output until the trust-assessment and L2 lineage models exist.
+L2 may analyze only database content. The current deterministic stored-input
+summary accepts only current observation heads whose latest assessment is
+ELIGIBLE. It persists normalized observation and assessment foreign keys,
+ordered inputs, an input hash, engine/contract versions and immutable output.
+It does not browse, predict, fill missing facts or execute model mathematics.
+
+Historical L2 rows remain immutable if an input is later revised; attempting to
+create a new current L2 summary with the superseded input is rejected.
 
 All V1 intelligence, time-series, vehicle and strategic-insight tables remain
 `legacy_unverified` as a namespace even where a legacy evidence link exists.

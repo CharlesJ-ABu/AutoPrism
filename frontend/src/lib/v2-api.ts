@@ -198,6 +198,41 @@ export interface ReviewCase {
   latest_decision: ReviewDecision | null;
 }
 
+export interface TrustAssessment {
+  id: string;
+  observation_id: string;
+  metric_key: string;
+  validation_run_id: string | null;
+  calculation_run_id: string | null;
+  review_decision_id: string | null;
+  eligible: boolean;
+  currently_eligible: boolean;
+  reason_codes: string[];
+  policy_version: string;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface L2Insight {
+  id: string;
+  title: string;
+  input_hash: string;
+  engine_version: string;
+  prompt_version: string;
+  output: {
+    summary?: string;
+    items?: Array<Record<string, unknown>>;
+    limitations?: string[];
+  };
+  created_by: string;
+  created_at: string;
+  inputs: Array<{
+    ordinal: number;
+    observation_id: string;
+    trust_assessment_id: string;
+  }>;
+}
+
 export interface Evidence {
   fragment_id: string;
   locator_type: string;
@@ -416,5 +451,23 @@ export const api = {
         body: JSON.stringify(payload),
       },
     ),
+  listTrustAssessments: (panelVersionKey: string) =>
+    request<TrustAssessment[]>(
+      `/verification/assessments?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  assessObservation: (payload: {
+    observation_id: string;
+    validation_run_id?: string;
+  }) =>
+    request<TrustAssessment>('/verification/assessments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listInsights: () => request<L2Insight[]>('/insights'),
+  createInsight: (payload: { observation_ids: string[]; created_by: string }) =>
+    request<L2Insight>('/insights', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   artifactUrl: (id: string) => `${API_BASE}/evidence/artifacts/${id}`,
 };

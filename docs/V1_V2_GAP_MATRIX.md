@@ -46,7 +46,7 @@ read-only comparison source.
 | M2 Dashboard lifecycle | Version history, clone/edit as new immutable version, explicit draft/frozen states, structured Schema/UI DSL editor and validation feedback | API integration tests, browser history/edit/confirmation smoke, Schema-bound DSL unit tests | Complete |
 | M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser source/compliance/job/action smoke | Complete |
 | M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Complete for current trust contract; eligibility/L2 remains M5 |
-| M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Pending |
+| M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Complete |
 
 ## Feature acceptance ledger
 
@@ -70,7 +70,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | L1 → INFO lineage | done for reference panels | complete current trace | done | partial until direct extraction-run FK |
 | Deterministic calculations | scoped Decimal engine and replay records | view and run plans | done | done for supported operations |
 | Unit conversion registry | missing | missing | missing | missing |
-| L2 stored-data-only analysis | contract only | missing | missing | missing |
+| L2 stored-data-only analysis | normalized eligible inputs and immutable hash | connected with explicit unavailable state | done | done for deterministic evidence summary |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |
 | Encrypted credential vault | SaaS-only deferred | explicit TODO required | missing | deferred |
 | Isolated custom React runtime | source storage only | explicit TODO required | hash test only | deferred |
@@ -176,3 +176,25 @@ has a real path with missing required behavior; **missing** has no usable path;
 - Browser desktop and 390×844 mobile smoke displayed the trust state boundary,
   2 real UNVERIFIED observations, source hosts, hashes, explicit tolerances and
   zero validation/review runs without horizontal overflow or real-data writes.
+
+## M5 verification record
+
+- Added append-only `TrustAssessment`, `L2Insight` and normalized
+  `L2InsightInput` records with database immutability triggers.
+- Eligibility replays stored artifact bytes and fragment text hashes, rejects
+  superseded/legacy/rejected observations, requires a PASSED independent-source
+  validation and checks deterministic calculation lineage where applicable.
+- L2 accepts only current heads whose latest assessment is ELIGIBLE. It freezes
+  observation and assessment foreign keys, input hash, deterministic engine and
+  contract versions; duplicate input sets are idempotent.
+- Integration tests prove a passed two-source observation can produce an
+  eligible assessment and L2 record, a one-source validation cannot, and
+  revising the eligible input makes the old assessment stale and blocks a new
+  current L2 run.
+- Preserved real database upgraded to `0004_v2_trust_assessments_l2` without
+  data deletion; disposable downgrade/re-upgrade and drift checks passed.
+- Real reference UI shows 0 ELIGIBLE, two NOT ASSESSED observations and a
+  disabled “L2 当前不可用” state. No production assessment or insight was
+  written during browser smoke.
+- Legacy `reset.py` and `reset_l2.py` now refuse destructive resets and direct
+  operators to Alembic plus disposable test databases.

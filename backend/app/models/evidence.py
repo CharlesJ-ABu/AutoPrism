@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -371,6 +372,100 @@ class ReviewDecision(Base):
     )
 
 
+class TrustAssessment(Base):
+    """Append-only eligibility decision over one immutable observation."""
+
+    __tablename__ = "trust_assessments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    validation_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("validation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    calculation_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("calculation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    review_decision_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("review_decisions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
+    reason_codes: Mapped[list] = mapped_column(JSONB, nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class L2Insight(Base):
+    """Stored-input-only deterministic L2 synthesis."""
+
+    __tablename__ = "l2_insights"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    engine_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    output: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_l2_insight_input_hash_hex",
+        ),
+    )
+
+
+class L2InsightInput(Base):
+    """Normalized ordered L2 input with database-enforced references."""
+
+    __tablename__ = "l2_insight_inputs"
+
+    insight_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("l2_insights.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    trust_assessment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trust_assessments.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_l2_insight_input_ordinal"),
+        UniqueConstraint(
+            "insight_id",
+            "observation_id",
+            name="uq_l2_insight_observation",
+        ),
+    )
+
+
 def _reject_immutable_mutation(mapper, connection, target) -> None:
     raise RuntimeError(
         f"{type(target).__name__} is append-only; create a superseding record"
@@ -389,6 +484,9 @@ for _immutable_model in (
     ValidationRun,
     ReviewCase,
     ReviewDecision,
+    TrustAssessment,
+    L2Insight,
+    L2InsightInput,
 ):
     event.listen(_immutable_model, "before_update", _reject_immutable_mutation)
     event.listen(_immutable_model, "before_delete", _reject_immutable_mutation)

@@ -25,19 +25,21 @@ Coverage includes:
 - deterministic decimal calculation and replay hash;
 - numeric cross-source tolerance and review routing;
 - independent-source enforcement, complete trust-history APIs, single-head
-  review decisions and duplicate correction rejection.
+  review decisions and duplicate correction rejection;
+- artifact/fragment eligibility replay, normalized L2 inputs, idempotent
+  stored-input summaries and stale-assessment rejection after revision.
 
 ## Database migrations
 
 - `alembic check`: no schema drift.
-- current revision: `0003_v2_lineage_uniqueness`.
+- current revision: `0004_v2_trust_assessments_l2`.
 - preserved historical database upgraded its migration graph without deleting,
   stamping or rewriting real data.
 - empty disposable database upgraded through the complete V2 chain and the V1
   compatibility revisions.
-- disposable M4 downgrade
-  `0003_v2_lineage_uniqueness -> 0002_backfill_legacy_evidence` succeeded.
-- re-upgrade to `0003_v2_lineage_uniqueness` succeeded.
+- disposable M5 downgrade
+  `0004_v2_trust_assessments_l2 -> 0003_v2_lineage_uniqueness` succeeded.
+- re-upgrade to `0004_v2_trust_assessments_l2` succeeded.
 - second `alembic check` reported no new operations.
 
 ## Real data end-to-end
@@ -77,6 +79,9 @@ issues. Values use deterministic mappings rather than LLM arithmetic.
   and explicit validation tolerances, and showed honest zero states for
   calculations, validations and reviews. Desktop and 390×844 mobile layouts
   remained usable without writing real history.
+- eligibility/L2 smoke displayed both real observations as NOT ASSESSED,
+  zero ELIGIBLE, a disabled L2 action and the explicit “L2 当前不可用” state.
+  The current JavaScript bundle emitted no warnings/errors.
 
 ## Known non-blocking warnings
 

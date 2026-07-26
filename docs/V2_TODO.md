@@ -10,14 +10,12 @@
 - Isolated custom React compile/preview/runtime with dependency allowlist,
   CSP, resource limits, and no ambient credentials.
 - Source-pool editing and deletion (creation/registration/collection are now connected).
-- Append-only trust assessments/eligibility policy that can promote a current
-  observation without mutating it; review-queue UI is now connected.
 - Direct `MetricObservation → ExtractionRun` lineage and multi-fragment
   observation evidence relations.
 - Identity-backed reviewer/reviser principals; current actor labels are
   explicitly self-asserted.
-- L2 service that selects only eligible stored observations and records its
-  complete input set.
+- Optional evidence-bound narrative L2 provider after authentication and model
+  governance; deterministic stored-input L2 is now implemented.
 - Artifact garbage-collection report for files left orphaned by failed
   transactions; never delete without an explicit reviewed policy.
 - Remove transitional V1-development columns from `review_cases` only after a
