@@ -13,7 +13,7 @@ from app.acquisition.fetcher import DEFAULT_USER_AGENT, HttpFetcher
 from app.acquisition.parsers import parse_content
 from app.acquisition.policy import evaluate_robots, evaluate_static_policy
 from app.core.config import settings
-from app.domain.evidence import sha256_bytes
+from app.domain.evidence import sha256_bytes, validate_locator
 from app.models.evidence import (
     EvidenceArtifact,
     EvidenceFragment,
@@ -148,6 +148,7 @@ class CollectionService:
             await self.db.flush()
 
             for record in parsed.records:
+                validate_locator(record.locator_type, record.locator)
                 self.db.add(
                     EvidenceFragment(
                         snapshot_id=snapshot.id,

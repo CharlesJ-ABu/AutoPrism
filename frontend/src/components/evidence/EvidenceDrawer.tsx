@@ -2,6 +2,7 @@ import { Download, ExternalLink, FileJson2, ShieldCheck } from 'lucide-react';
 
 import { formatDate } from '../../lib/format';
 import { api, type PanelView } from '../../lib/v2-api';
+import { TrustWorkspace } from '../../features/trust/TrustWorkspace';
 import { Drawer, Status } from '../ui';
 
 export function EvidenceDrawer({
@@ -22,7 +23,7 @@ export function EvidenceDrawer({
         <div className="drawer-section-title">
           <h3>冻结契约</h3>
           <Status tone={panel.extraction?.validation.valid ? 'ok' : 'warning'}>
-            {panel.extraction?.validation.valid ? 'SCHEMA VALID' : 'NOT VERIFIED'}
+            {panel.extraction?.validation.valid ? 'SCHEMA VALID' : 'SCHEMA NOT VALID'}
           </Status>
         </div>
         <dl className="detail-list">
@@ -75,6 +76,8 @@ export function EvidenceDrawer({
           </div>
         )}
       </section>
+
+      <TrustWorkspace panelVersionKey={panel.id} />
 
       <section className="drawer-section code-section">
         <h3><FileJson2 size={14} /> JSON Schema</h3>

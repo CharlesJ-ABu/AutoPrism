@@ -95,9 +95,12 @@ def _decimal(value: Any) -> Decimal:
     if isinstance(value, bool):
         raise ValueError("boolean is not a numeric input")
     try:
-        return Decimal(str(value))
+        parsed = Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"invalid numeric input: {value!r}") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"numeric input must be finite: {value!r}")
+    return parsed
 
 
 def execute_calculation(

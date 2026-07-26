@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -85,12 +86,16 @@ async def list_observations(
             "period_end": observation.period_end,
             "geographic_scope": observation.geographic_scope,
             "dimensions": observation.dimensions,
+            "extraction_model": observation.extraction_model,
+            "extraction_prompt_version": observation.extraction_prompt_version,
+            "confidence": observation.confidence,
             "trust_state": observation.trust_state.value,
             "supersedes_id": (
                 str(observation.supersedes_id)
                 if observation.supersedes_id
                 else None
             ),
+            "created_at": observation.created_at,
             "evidence": {
                 "fragment_id": str(fragment.id),
                 "locator_type": fragment.locator_type,
@@ -173,7 +178,14 @@ async def revise_observation(
         metadata_json=payload.metadata,
     )
     db.add(revision)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="observation was concurrently superseded",
+        ) from exc
     return {
         "revision_id": str(revision.id),
         "original_observation_id": str(original.id),
@@ -182,6 +194,43 @@ async def revise_observation(
         "revised_by": revision.revised_by,
         "created_at": revision.created_at,
     }
+
+
+@router.get("/revisions")
+async def list_revisions(
+    panel_version_key: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = (
+        select(ObservationRevision, MetricObservation)
+        .join(
+            MetricObservation,
+            ObservationRevision.original_observation_id == MetricObservation.id,
+        )
+    )
+    if panel_version_key:
+        statement = statement.where(
+            MetricObservation.panel_version_key == panel_version_key
+        )
+    rows = (
+        await db.execute(
+            statement.order_by(desc(ObservationRevision.created_at)).limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": str(revision.id),
+            "original_observation_id": str(revision.original_observation_id),
+            "replacement_observation_id": str(revision.replacement_observation_id),
+            "metric_key": original.metric_key,
+            "reason": revision.reason,
+            "revised_by": revision.revised_by,
+            "metadata": revision.metadata_json,
+            "created_at": revision.created_at,
+        }
+        for revision, original in rows
+    ]
 
 
 @router.get("/snapshots")

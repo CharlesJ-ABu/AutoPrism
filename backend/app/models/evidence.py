@@ -211,6 +211,12 @@ class MetricObservation(Base):
             "metric_key",
             "observed_at",
         ),
+        Index(
+            "uq_metric_observation_supersedes",
+            "supersedes_id",
+            unique=True,
+            postgresql_where=supersedes_id.is_not(None),
+        ),
     )
 
 
@@ -238,6 +244,13 @@ class ObservationRevision(Base):
     revised_by: Mapped[str] = mapped_column(String(255), nullable=False)
     metadata_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "original_observation_id",
+            name="uq_observation_revision_original",
+        ),
+    )
 
 
 class CalculationRun(Base):
@@ -341,6 +354,21 @@ class ReviewDecision(Base):
     decision: Mapped[dict] = mapped_column(JSONB, nullable=False)
     decided_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "uq_review_decision_supersedes",
+            "supersedes_id",
+            unique=True,
+            postgresql_where=supersedes_id.is_not(None),
+        ),
+        Index(
+            "uq_review_decision_root",
+            "review_case_id",
+            unique=True,
+            postgresql_where=supersedes_id.is_(None),
+        ),
+    )
 
 
 def _reject_immutable_mutation(mapper, connection, target) -> None:

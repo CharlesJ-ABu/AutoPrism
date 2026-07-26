@@ -45,7 +45,7 @@ read-only comparison source.
 | M1 Cockpit foundation | Tokens, reusable Shell/Panel/Button/Status/Drawer/AsyncState, role/view switcher, truthful situation map, split feature modules | Type check/build, 1440×800 and 390×844 screenshots, current-bundle console clean, full evidence drawer smoke | Complete |
 | M2 Dashboard lifecycle | Version history, clone/edit as new immutable version, explicit draft/frozen states, structured Schema/UI DSL editor and validation feedback | API integration tests, browser history/edit/confirmation smoke, Schema-bound DSL unit tests | Complete |
 | M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser source/compliance/job/action smoke | Complete |
-| M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Pending |
+| M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Complete for current trust contract; eligibility/L2 remains M5 |
 | M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Pending |
 
 ## Feature acceptance ledger
@@ -63,12 +63,12 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Manual edit and save new version | done | done | done | done |
 | Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
 | Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
-| Evidence viewing | done | first fragment only | partial | partial |
-| Revision history | done for observations | missing | done | partial |
-| Cross-source validation | done | missing | done | partial |
-| Human review | done | missing | partial | partial |
-| L1 → INFO lineage | done for reference panels | partial | done | partial |
-| Deterministic calculations | done | missing | done | partial |
+| Evidence viewing | all fragments plus INFO provenance | connected cockpit drawer | done | done |
+| Revision history | append-only with DB fork prevention | view and create replacement | done | done |
+| Cross-source validation | explicit tolerances and independent-source rule | view and run | done | done |
+| Human review | append-only single-head decisions | queue and superseding decisions | done | done; actor identity remains deferred |
+| L1 → INFO lineage | done for reference panels | complete current trace | done | partial until direct extraction-run FK |
+| Deterministic calculations | scoped Decimal engine and replay records | view and run plans | done | done for supported operations |
 | Unit conversion registry | missing | missing | missing | missing |
 | L2 stored-data-only analysis | contract only | missing | missing | missing |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |
@@ -89,11 +89,11 @@ has a real path with missing required behavior; **missing** has no usable path;
 4. The composer label “保存冻结版本” sends `state: draft`. UI wording and the
    persisted state conflict and must be separated into draft save versus
    explicit frozen publication.
-5. The current drawer exposes the first evidence fragment only and therefore
-   cannot prove field-level lineage for multi-field/multi-source records.
-   M1 now renders every evidence fragment returned by the view API; M4 still
-   needs field-to-fragment mappings, observations, calculations and validation
-   history in the same workflow.
+5. The original V2 drawer exposed only the first fragment. M1 expanded it to
+   every returned fragment and M4 added field observations, revision chains,
+   calculation runs, validation runs and review decisions. A direct
+   observation-to-extraction-run foreign key and multi-fragment observation
+   relation remain explicit data-model work.
 
 ## M1 verification record
 
@@ -141,8 +141,10 @@ has a real path with missing required behavior; **missing** has no usable path;
   longer supplies an unverified `0.5` default.
 - Creating a collection job is disabled until the user confirms authorization
   and accepts the pause-on-restriction policy.
-- Login, terms, robots, rate-limit and access restrictions remain backend
-  policy gates; the UI states that CAPTCHA and access blocks cannot be bypassed.
+- Declared auth requirements and configured robots restrictions remain backend
+  policy gates. Terms/legal review and rate scheduling are explicitly marked
+  metadata/manual or deferred; the UI states that CAPTCHA and access blocks
+  cannot be bypassed.
 - Successful jobs expose a real Schema-bound extraction action targeting an
   existing frozen panel version. Deterministic mappings run in code; missing
   model credentials return an explicit error.
@@ -152,3 +154,25 @@ has a real path with missing required behavior; **missing** has no usable path;
   added to the real database.
 - Local file upload, authenticated browser collection, CAPTCHA continuation,
   scheduler execution and encrypted credential storage remain explicit TODOs.
+
+## M4 verification record
+
+- Evidence terminal now loads real INFO observations, immutable corrections,
+  deterministic calculation runs, validation runs and complete review-decision
+  chains filtered by the current frozen panel version.
+- Schema validity is displayed separately from fact trust. Existing reference
+  observations remain truthfully UNVERIFIED; the UI does not infer eligibility.
+- Validation tolerances are mandatory. Duplicate inputs and mismatched panel,
+  Schema, unit, currency, period, geography or dimensions are rejected.
+- A validation can pass only with at least two independent source definitions;
+  repeated observations from one source create NEEDS_REVIEW.
+- Calculation APIs reject duplicate or incompatible scope, require explicit
+  output units, and require a unit plan for multiply/divide.
+- Migration `0003_v2_lineage_uniqueness` adds observation/revision/review
+  single-chain constraints and halts instead of rewriting any pre-existing
+  fork.
+- Real preserved database upgrade and `alembic check` passed. Disposable
+  downgrade/re-upgrade/check passed. Full integration suite passed 24/24.
+- Browser desktop and 390×844 mobile smoke displayed the trust state boundary,
+  2 real UNVERIFIED observations, source hosts, hashes, explicit tolerances and
+  zero validation/review runs without horizontal overflow or real-data writes.

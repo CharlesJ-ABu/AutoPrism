@@ -280,6 +280,10 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         )
                     )
                 ).scalar_one()
+                original_snapshot = await db.get(
+                    SourceSnapshot,
+                    collected.result_snapshot_id,
+                )
                 extracted = await ExtractionService(
                     db,
                     FakeProvider(
@@ -307,27 +311,89 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(observation.normalized_value, {"value": 42})
                 self.assertEqual(observation.unit, "vehicle")
+                independent_source = SourceDefinition(
+                    pool_id=pool.id,
+                    key=f"independent-{suffix}",
+                    name="Independent official source",
+                    canonical_url="https://independent.example.test/report",
+                    kind=SourceKind.HTML,
+                    global_reputation=1,
+                    topic_authority=1,
+                )
+                db.add(independent_source)
+                await db.flush()
+                independent_snapshot = SourceSnapshot(
+                    source_definition_id=independent_source.id,
+                    source_key=independent_source.key,
+                    canonical_url=independent_source.canonical_url,
+                    artifact_id=original_snapshot.artifact_id,
+                    retrieved_at=datetime(2026, 7, 25, 0, 1, 0),
+                )
+                db.add(independent_snapshot)
+                await db.flush()
+                independent_fragment = EvidenceFragment(
+                    snapshot_id=independent_snapshot.id,
+                    locator_type="css_selector",
+                    locator={"selector": "#reported-sales"},
+                    extracted_text="Independent filing reports 43 vehicles",
+                )
+                db.add(independent_fragment)
+                await db.flush()
                 second = MetricObservation(
                     panel_version_key=observation.panel_version_key,
                     schema_version=observation.schema_version,
                     metric_key=observation.metric_key,
-                    evidence_fragment_id=observation.evidence_fragment_id,
+                    evidence_fragment_id=independent_fragment.id,
                     raw_value={"value": 43},
                     normalized_value={"value": 43},
                     unit="vehicle",
                     dimensions=observation.dimensions,
                     geographic_scope={},
                 )
+                same_source = MetricObservation(
+                    panel_version_key=observation.panel_version_key,
+                    schema_version=observation.schema_version,
+                    metric_key=observation.metric_key,
+                    evidence_fragment_id=observation.evidence_fragment_id,
+                    raw_value={"value": 42},
+                    normalized_value={"value": 42},
+                    unit="vehicle",
+                    dimensions=observation.dimensions,
+                    geographic_scope={},
+                )
                 db.add(second)
+                db.add(same_source)
                 await db.commit()
+                same_source_validation, same_source_review = (
+                    await VerificationService(db).validate_observations(
+                        [observation.id, same_source.id],
+                        absolute_tolerance=0,
+                        relative_tolerance=0,
+                    )
+                )
+                self.assertEqual(
+                    same_source_validation.state.value,
+                    "needs_review",
+                )
+                self.assertIsNotNone(same_source_review)
                 validation, review = await VerificationService(
                     db
                 ).validate_observations(
                     [observation.id, second.id],
                     absolute_tolerance=2,
+                    relative_tolerance=0,
                 )
                 self.assertEqual(validation.state.value, "passed")
                 self.assertIsNone(review)
+                conflict_validation, review_case = await VerificationService(
+                    db
+                ).validate_observations(
+                    [observation.id, second.id],
+                    absolute_tolerance=0,
+                    relative_tolerance=0,
+                )
+                self.assertEqual(conflict_validation.state.value, "conflict")
+                self.assertIsNotNone(review_case)
                 calculated, calculation_run = await VerificationService(db).calculate(
                     operation="add",
                     input_observation_ids=[observation.id, second.id],
@@ -342,6 +408,79 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     transport=transport,
                     base_url="http://test",
                 ) as client:
+                    observations_response = await client.get(
+                        "/api/v2/evidence/observations",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(observations_response.status_code, 200)
+                    self.assertGreaterEqual(len(observations_response.json()), 3)
+
+                    calculations_response = await client.get(
+                        "/api/v2/verification/calculations",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(calculations_response.status_code, 200)
+                    self.assertEqual(
+                        calculations_response.json()[0]["replay_hash"],
+                        calculation_run.replay_hash,
+                    )
+
+                    validations_response = await client.get(
+                        "/api/v2/verification/validations",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(validations_response.status_code, 200)
+                    self.assertEqual(len(validations_response.json()), 3)
+
+                    reviews_response = await client.get(
+                        "/api/v2/verification/reviews",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(reviews_response.status_code, 200)
+                    self.assertEqual(len(reviews_response.json()), 2)
+                    selected_review = next(
+                        item
+                        for item in reviews_response.json()
+                        if item["id"] == str(review_case.id)
+                    )
+                    self.assertEqual(selected_review["decisions"], [])
+
+                    first_decision_response = await client.post(
+                        f"/api/v2/verification/reviews/{review_case.id}/decisions",
+                        json={
+                            "outcome": "approved",
+                            "decision": {"reason": "Primary filing confirmed."},
+                            "decided_by": "integration-reviewer",
+                        },
+                    )
+                    self.assertEqual(first_decision_response.status_code, 201)
+                    first_decision = first_decision_response.json()
+
+                    stale_decision_response = await client.post(
+                        f"/api/v2/verification/reviews/{review_case.id}/decisions",
+                        json={
+                            "outcome": "rejected",
+                            "decision": {"reason": "Missing superseding link."},
+                            "decided_by": "integration-reviewer",
+                        },
+                    )
+                    self.assertEqual(stale_decision_response.status_code, 409)
+
+                    replacement_decision_response = await client.post(
+                        f"/api/v2/verification/reviews/{review_case.id}/decisions",
+                        json={
+                            "outcome": "rejected",
+                            "decision": {"reason": "New official correction."},
+                            "decided_by": "integration-reviewer",
+                            "supersedes_id": first_decision["id"],
+                        },
+                    )
+                    self.assertEqual(replacement_decision_response.status_code, 201)
+                    self.assertEqual(
+                        replacement_decision_response.json()["supersedes_id"],
+                        first_decision["id"],
+                    )
+
                     revision_response = await client.post(
                         f"/api/v2/evidence/observations/{observation.id}/revisions",
                         json={
@@ -376,6 +515,17 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         },
                     )
                     self.assertEqual(duplicate_response.status_code, 409)
+
+                    revisions_response = await client.get(
+                        "/api/v2/evidence/revisions",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(revisions_response.status_code, 200)
+                    self.assertEqual(len(revisions_response.json()), 1)
+                    self.assertEqual(
+                        revisions_response.json()[0]["replacement_observation_id"],
+                        str(replacement.id),
+                    )
 
 
 if __name__ == "__main__":

@@ -23,19 +23,21 @@ Coverage includes:
 - safe UI DSL nodes bound to fields and table columns in the frozen Schema;
 - provider-neutral adapters and deterministic JSON mapping;
 - deterministic decimal calculation and replay hash;
-- numeric cross-source tolerance and review routing.
+- numeric cross-source tolerance and review routing;
+- independent-source enforcement, complete trust-history APIs, single-head
+  review decisions and duplicate correction rejection.
 
 ## Database migrations
 
 - `alembic check`: no schema drift.
-- current revision: `0002_backfill_legacy_evidence`.
+- current revision: `0003_v2_lineage_uniqueness`.
 - preserved historical database upgraded its migration graph without deleting,
   stamping or rewriting real data.
 - empty disposable database upgraded through the complete V2 chain and the V1
   compatibility revisions.
-- disposable database downgrade
-  `0002_backfill_legacy_evidence -> 8a9c3d4e5f60` succeeded.
-- re-upgrade to `0002_backfill_legacy_evidence` succeeded.
+- disposable M4 downgrade
+  `0003_v2_lineage_uniqueness -> 0002_backfill_legacy_evidence` succeeded.
+- re-upgrade to `0003_v2_lineage_uniqueness` succeeded.
 - second `alembic check` reported no new operations.
 
 ## Real data end-to-end
@@ -70,6 +72,11 @@ issues. Values use deterministic mappings rather than LLM arithmetic.
 - operations smoke loaded the real 3-source/6-job state, kept all collection
   actions disabled until compliance acknowledgement, and exposed the human
   action and Schema-bound extraction paths without mutating production data.
+- trust-workspace smoke loaded 2 real UNVERIFIED observations for the selected
+  panel, separated Schema validity from trust, displayed source hosts/hashes
+  and explicit validation tolerances, and showed honest zero states for
+  calculations, validations and reviews. Desktop and 390×844 mobile layouts
+  remained usable without writing real history.
 
 ## Known non-blocking warnings
 

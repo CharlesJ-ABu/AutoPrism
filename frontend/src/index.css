@@ -841,6 +841,106 @@ button:disabled { opacity: .42; cursor: not-allowed; }
   background: rgba(52, 211, 153, .06);
   font-size: 9px;
 }
+.trust-workspace { background: linear-gradient(135deg, rgba(34, 211, 238, .025), rgba(139, 92, 246, .025)); }
+.trust-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.trust-boundary {
+  margin: -3px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, .14);
+  border-radius: 8px;
+  color: #9891a4;
+  background: rgba(251, 191, 36, .035);
+  font-size: 9px;
+  line-height: 1.55;
+}
+.drawer-tabs.trust-tabs {
+  position: static;
+  margin: 0 -24px 16px;
+  padding-inline: 24px;
+}
+.trust-tabs button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.trust-stack { display: grid; gap: 11px; }
+.trust-form, .trust-record, .lineage-list {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .022);
+}
+.trust-form {
+  border-color: rgba(139, 92, 246, .2);
+  background: rgba(139, 92, 246, .035);
+}
+.trust-form h4, .lineage-list h4 {
+  margin: 0 0 8px;
+  color: #d9d2e7;
+  font-size: 11px;
+}
+.trust-form p { margin: 0 0 11px; color: #817a8e; font-size: 9px; line-height: 1.55; }
+.trust-form label {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  color: #827b91;
+  font-size: 9px;
+}
+.trust-form input, .trust-form select, .trust-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #dfd9e8;
+  background: rgba(3, 4, 16, .62);
+  font: 9px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.trust-form textarea { min-height: 90px; resize: vertical; }
+.trust-record > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 9px;
+}
+.trust-record > header > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.trust-record > header strong { color: #e4deec; font-size: 13px; }
+.trust-record > header small { color: #777083; font-size: 9px; }
+.observation-selector {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px;
+}
+.observation-selector label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 8px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.observation-selector input { grid-row: span 2; width: auto; accent-color: var(--purple); }
+.observation-selector span { color: #c8c1d3; }
+.observation-selector small { overflow-wrap: anywhere; color: #666071; font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.lineage-list > div { padding: 9px 0; border-top: 1px dashed rgba(255, 255, 255, .08); }
+.lineage-list span { margin-left: 8px; color: #938ba0; }
+.lineage-list p { margin: 6px 0 0; color: #6f6879; font-size: 9px; }
+.review-decision {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 7px;
+  margin: 8px 0;
+  padding: 8px;
+  border-left: 2px solid var(--cyan);
+  color: #a9a2b4;
+  background: rgba(34, 211, 238, .025);
+  font-size: 9px;
+}
+.review-decision svg { color: var(--cyan); }
+.review-decision small { grid-column: 2; color: #716a7c; }
 .code-section pre {
   max-height: 320px;
   overflow: auto;

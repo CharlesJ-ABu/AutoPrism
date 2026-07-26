@@ -151,3 +151,7 @@ Engineering metadata is summarized in the cockpit and expanded only through
 the evidence trace terminal, so the primary surface remains suitable for
 research and decision work rather than looking like a database administration
 screen.
+
+The normative state boundaries, validation independence rules, calculation
+constraints, correction lineage and compliance implementation status are
+defined in [V2_DATA_TRUST_CONTRACT.md](V2_DATA_TRUST_CONTRACT.md).

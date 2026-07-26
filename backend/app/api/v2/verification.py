@@ -3,13 +3,21 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.evidence import ReviewCase, ReviewDecision, ReviewState
+from app.models.evidence import (
+    CalculationRun,
+    MetricObservation,
+    ReviewCase,
+    ReviewDecision,
+    ReviewState,
+    ValidationRun,
+)
 from app.services.verification_service import VerificationService
 
 
@@ -18,8 +26,8 @@ router = APIRouter()
 
 class ValidationRequest(BaseModel):
     observation_ids: list[uuid.UUID] = Field(min_length=1)
-    absolute_tolerance: str = "0"
-    relative_tolerance: str = "0"
+    absolute_tolerance: str = Field(min_length=1)
+    relative_tolerance: str = Field(min_length=1)
 
 
 class CalculationRequest(BaseModel):
@@ -32,7 +40,7 @@ class CalculationRequest(BaseModel):
 
 class DecisionRequest(BaseModel):
     outcome: ReviewState
-    decision: dict[str, Any]
+    decision: dict[str, Any] = Field(min_length=1)
     decided_by: str = Field(min_length=1, max_length=255)
     supersedes_id: uuid.UUID | None = None
 
@@ -85,21 +93,112 @@ async def calculate(
     }
 
 
+async def _panel_observation_ids(
+    db: AsyncSession,
+    panel_version_key: str | None,
+) -> set[str] | None:
+    if panel_version_key is None:
+        return None
+    values = (
+        await db.execute(
+            select(MetricObservation.id).where(
+                MetricObservation.panel_version_key == panel_version_key
+            )
+        )
+    ).scalars()
+    return {str(value) for value in values}
+
+
+@router.get("/calculations")
+async def list_calculations(
+    panel_version_key: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = (
+        select(CalculationRun, MetricObservation)
+        .join(
+            MetricObservation,
+            CalculationRun.output_observation_id == MetricObservation.id,
+        )
+    )
+    if panel_version_key:
+        statement = statement.where(
+            MetricObservation.panel_version_key == panel_version_key
+        )
+    rows = (
+        await db.execute(
+            statement.order_by(desc(CalculationRun.created_at)).limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": str(run.id),
+            "output_observation_id": str(run.output_observation_id),
+            "output_metric_key": output.metric_key,
+            "operation": run.operation,
+            "input_observation_ids": run.input_observation_ids,
+            "parameters": run.parameters,
+            "result": run.result,
+            "engine_version": run.engine_version,
+            "replay_hash": run.replay_hash,
+            "created_at": run.created_at,
+        }
+        for run, output in rows
+    ]
+
+
+@router.get("/validations")
+async def list_validations(
+    panel_version_key: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    panel_ids = await _panel_observation_ids(db, panel_version_key)
+    runs = (
+        await db.execute(
+            select(ValidationRun)
+            .order_by(desc(ValidationRun.created_at))
+            .limit(limit)
+        )
+    ).scalars()
+    return [
+        {
+            "id": str(run.id),
+            "comparison_key": run.comparison_key,
+            "observation_ids": run.observation_ids,
+            "rule_version": run.rule_version,
+            "tolerance": run.tolerance,
+            "result": run.result,
+            "state": run.state.value,
+            "created_at": run.created_at,
+        }
+        for run in runs
+        if panel_ids is None or bool(panel_ids.intersection(run.observation_ids))
+    ]
+
+
 @router.get("/reviews")
-async def list_reviews(db: AsyncSession = Depends(get_db)):
+async def list_reviews(
+    panel_version_key: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    panel_ids = await _panel_observation_ids(db, panel_version_key)
     cases = (
         await db.execute(select(ReviewCase).order_by(desc(ReviewCase.created_at)))
-    ).scalars()
+    ).scalars().all()
     output = []
     for item in cases:
-        latest = (
+        if panel_ids is not None and not panel_ids.intersection(item.observation_ids):
+            continue
+        decisions = (
             await db.execute(
                 select(ReviewDecision)
                 .where(ReviewDecision.review_case_id == item.id)
-                .order_by(desc(ReviewDecision.created_at))
-                .limit(1)
+                .order_by(ReviewDecision.created_at, ReviewDecision.id)
             )
-        ).scalar_one_or_none()
+        ).scalars().all()
+        latest = decisions[-1] if decisions else None
         output.append(
             {
                 "id": str(item.id),
@@ -109,9 +208,29 @@ async def list_reviews(db: AsyncSession = Depends(get_db)):
                 "observation_ids": item.observation_ids,
                 "reason_codes": item.reason_codes,
                 "created_at": item.created_at,
+                "decisions": [
+                    {
+                        "id": str(decision.id),
+                        "supersedes_id": (
+                            str(decision.supersedes_id)
+                            if decision.supersedes_id
+                            else None
+                        ),
+                        "outcome": decision.outcome.value,
+                        "decision": decision.decision,
+                        "decided_by": decision.decided_by,
+                        "created_at": decision.created_at,
+                    }
+                    for decision in decisions
+                ],
                 "latest_decision": (
                     {
                         "id": str(latest.id),
+                        "supersedes_id": (
+                            str(latest.supersedes_id)
+                            if latest.supersedes_id
+                            else None
+                        ),
                         "outcome": latest.outcome.value,
                         "decision": latest.decision,
                         "decided_by": latest.decided_by,
@@ -135,10 +254,21 @@ async def decide_review(
         raise HTTPException(status_code=422, detail="OPEN is not a decision outcome")
     if await db.get(ReviewCase, case_id) is None:
         raise HTTPException(status_code=404, detail="review case not found")
-    if payload.supersedes_id:
-        previous = await db.get(ReviewDecision, payload.supersedes_id)
-        if previous is None or previous.review_case_id != case_id:
-            raise HTTPException(status_code=422, detail="invalid supersedes_id")
+    latest = (
+        await db.execute(
+            select(ReviewDecision)
+            .where(ReviewDecision.review_case_id == case_id)
+            .order_by(desc(ReviewDecision.created_at), desc(ReviewDecision.id))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest is None and payload.supersedes_id is not None:
+        raise HTTPException(status_code=422, detail="first decision cannot supersede")
+    if latest is not None and payload.supersedes_id != latest.id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"decision must supersede latest decision {latest.id}",
+        )
     decision = ReviewDecision(
         review_case_id=case_id,
         supersedes_id=payload.supersedes_id,
@@ -147,11 +277,21 @@ async def decide_review(
         decided_by=payload.decided_by,
     )
     db.add(decision)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="review decision was concurrently superseded",
+        ) from exc
     await db.refresh(decision)
     return {
         "id": str(decision.id),
         "review_case_id": str(decision.review_case_id),
+        "supersedes_id": (
+            str(decision.supersedes_id) if decision.supersedes_id else None
+        ),
         "outcome": decision.outcome.value,
         "decision": decision.decision,
         "decided_by": decision.decided_by,

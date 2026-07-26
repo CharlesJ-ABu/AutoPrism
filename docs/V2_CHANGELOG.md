@@ -55,5 +55,24 @@ edition and is not a merge target.
   values are now required human inputs.
 - Added job status, snapshot IDs, failure/policy details and a Schema-bound
   extraction action for successful snapshots.
-- Kept login restrictions, CAPTCHA, terms, robots and access blocks in the
-  pause-for-human path; no bypass path was added.
+- Kept declared login requirements, configured robots restrictions and access
+  blocks in the pause-for-human path; no bypass path was added. Terms/legal
+  review and scheduling remain explicitly manual/deferred.
+
+### M4 — Auditable trust workspace
+
+- Added panel-scoped observation, revision, calculation, validation and review
+  history APIs and connected them to the evidence terminal.
+- Added append-only observation corrections, deterministic calculation plans,
+  explicit-tolerance validation and superseding human-review decisions.
+- Prevented false cross-source passes by requiring independent source
+  definitions and complete metric/unit/currency/time/geography/dimension scope.
+- Added non-destructive database constraints that reject observation and
+  review-decision lineage forks; migrations halt on pre-existing conflicts
+  instead of choosing or deleting history.
+- Required explicit validation tolerances and calculation output units/unit
+  plans; duplicate and incompatible inputs are rejected.
+- Added the normative data-trust contract and separated Schema validity from
+  evidence, validation, human approval and future trusted eligibility.
+- Added accessible dialog semantics, Escape closing and desktop/mobile trust
+  workspace states.

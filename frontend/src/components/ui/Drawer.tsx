@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 import { IconButton } from './Button';
@@ -16,12 +16,22 @@ export function Drawer({
   children: ReactNode;
   wide?: boolean;
 }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
   return (
     <div className="drawer-backdrop" onClick={onClose} role="presentation">
       <aside
         aria-label={title}
+        aria-modal="true"
         className={`drawer ${wide ? 'drawer-wide' : ''}`}
         onClick={(event) => event.stopPropagation()}
+        role="dialog"
       >
         <div className="drawer-header">
           <div>

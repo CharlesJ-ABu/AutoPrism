@@ -60,6 +60,10 @@ class EvidenceDomainTests(unittest.TestCase):
             validate_numeric_sources([100]).state,
             "needs_review",
         )
+        with self.assertRaises(ValueError):
+            validate_numeric_sources([100, 101], absolute_tolerance="NaN")
+        with self.assertRaises(ValueError):
+            validate_numeric_sources([100, 101], relative_tolerance="-0.1")
 
     def test_local_artifact_store_is_content_addressed_and_verified(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

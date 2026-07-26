@@ -104,6 +104,100 @@ export interface HumanAction {
   resolved_at: string | null;
 }
 
+export interface MetricObservation {
+  id: string;
+  panel_version_key: string;
+  schema_version: string;
+  metric_key: string;
+  raw_value: Record<string, unknown>;
+  normalized_value: Record<string, unknown>;
+  unit: string | null;
+  currency: string | null;
+  observed_at: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  geographic_scope: Record<string, unknown>;
+  dimensions: Record<string, unknown>;
+  extraction_model: string | null;
+  extraction_prompt_version: string | null;
+  confidence: number | null;
+  trust_state: 'unverified' | 'verified' | 'rejected' | 'legacy_unverified';
+  supersedes_id: string | null;
+  created_at: string;
+  evidence: {
+    fragment_id: string;
+    locator_type: string;
+    locator: Record<string, unknown>;
+    text: string | null;
+    text_sha256: string | null;
+    snapshot_id: string;
+    source_url: string;
+    retrieved_at: string;
+    published_at: string | null;
+    artifact_id: string;
+    artifact_sha256: string;
+  };
+}
+
+export interface ObservationRevision {
+  id: string;
+  original_observation_id: string;
+  replacement_observation_id: string;
+  metric_key: string;
+  reason: string;
+  revised_by: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CalculationRun {
+  id: string;
+  output_observation_id: string;
+  output_metric_key: string;
+  operation: string;
+  input_observation_ids: string[];
+  parameters: Record<string, unknown>;
+  result: Record<string, unknown>;
+  engine_version: string;
+  replay_hash: string;
+  created_at: string;
+}
+
+export interface ValidationRun {
+  id: string;
+  comparison_key: string;
+  observation_ids: string[];
+  rule_version: string;
+  tolerance: { absolute?: string; relative?: string };
+  result: {
+    minimum?: string | null;
+    maximum?: string | null;
+    spread?: string | null;
+    relative_spread?: string | null;
+  };
+  state: 'pending' | 'passed' | 'conflict' | 'needs_review' | 'rejected';
+  created_at: string;
+}
+
+export interface ReviewDecision {
+  id: string;
+  supersedes_id: string | null;
+  outcome: 'approved' | 'rejected' | 'needs_information';
+  decision: Record<string, unknown>;
+  decided_by: string;
+  created_at: string;
+}
+
+export interface ReviewCase {
+  id: string;
+  validation_run_id: string | null;
+  observation_ids: string[];
+  reason_codes: string[];
+  created_at: string;
+  decisions: ReviewDecision[];
+  latest_decision: ReviewDecision | null;
+}
+
 export interface Evidence {
   fragment_id: string;
   locator_type: string;
@@ -232,6 +326,91 @@ export const api = {
   runExtraction: (payload: { panel_version_id: string; snapshot_id: string }) =>
     request<{ run_id: string; observation_ids: string[]; issues: Array<{ path: string; message: string }> }>(
       '/extractions',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  listObservations: (panelVersionKey: string) =>
+    request<MetricObservation[]>(
+      `/evidence/observations?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  listObservationRevisions: (panelVersionKey: string) =>
+    request<ObservationRevision[]>(
+      `/evidence/revisions?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  reviseObservation: (
+    observationId: string,
+    payload: {
+      raw_value: Record<string, unknown>;
+      normalized_value: Record<string, unknown>;
+      reason: string;
+      revised_by: string;
+      evidence_fragment_id?: string;
+      unit?: string | null;
+      currency?: string | null;
+      dimensions?: Record<string, unknown>;
+      geographic_scope?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
+    },
+  ) =>
+    request<ObservationRevision>(`/evidence/observations/${observationId}/revisions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listCalculations: (panelVersionKey: string) =>
+    request<CalculationRun[]>(
+      `/verification/calculations?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  calculate: (payload: {
+    operation: string;
+    input_observation_ids: string[];
+    output_metric_key: string;
+    output_unit: string | null;
+    parameters: Record<string, unknown>;
+  }) =>
+    request<{
+      observation_id: string;
+      calculation_run_id: string;
+      result: Record<string, unknown>;
+      replay_hash: string;
+    }>('/verification/calculate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listValidations: (panelVersionKey: string) =>
+    request<ValidationRun[]>(
+      `/verification/validations?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  validateObservations: (payload: {
+    observation_ids: string[];
+    absolute_tolerance: string;
+    relative_tolerance: string;
+  }) =>
+    request<{
+      validation_run_id: string;
+      state: ValidationRun['state'];
+      result: ValidationRun['result'];
+      review_case_id: string | null;
+    }>('/verification/validate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listReviews: (panelVersionKey: string) =>
+    request<ReviewCase[]>(
+      `/verification/reviews?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  decideReview: (
+    caseId: string,
+    payload: {
+      outcome: ReviewDecision['outcome'];
+      decision: Record<string, unknown>;
+      decided_by: string;
+      supersedes_id?: string;
+    },
+  ) =>
+    request<ReviewDecision & { review_case_id: string }>(
+      `/verification/reviews/${caseId}/decisions`,
       {
         method: 'POST',
         body: JSON.stringify(payload),
