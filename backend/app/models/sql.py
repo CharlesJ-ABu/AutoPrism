@@ -2,6 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
+import sqlalchemy as sa
 from sqlalchemy import (
     String, Boolean, Integer, Float, Text, DateTime, ForeignKey, JSON, Index, Enum
 )
@@ -35,23 +36,66 @@ class RawIntelligence(Base):
     __tablename__ = "raw_intelligence"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
     source_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g., 'Reuters', 'Weibo'
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     raw_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    status: Mapped[IntelligenceStatus] = mapped_column(Enum(IntelligenceStatus), default=IntelligenceStatus.PENDING_AI)
+    status: Mapped[IntelligenceStatus] = mapped_column(
+        Enum(IntelligenceStatus),
+        default=IntelligenceStatus.PENDING_AI,
+    )
     target_panel_ids: Mapped[List[str]] = mapped_column(JSONB, default=list) # Tagging which panel this raw data belongs to
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    verification_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="legacy_unverified",
+        server_default="legacy_unverified",
+    )
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=utcnow,
+        server_default=sa.func.now(),
+    )
+    revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
+    supersedes_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("raw_intelligence.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    capture_metadata: Mapped[dict] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=sa.text("'{}'::jsonb"),
+    )
+    processing_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    processing_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     
     # Relations
     info_records: Mapped[List["IntelligenceInfo"]] = relationship(back_populates="raw_intelligence", cascade="all, delete-orphan")
     structured_signals: Mapped[List["StructuredSignal"]] = relationship(back_populates="raw_intelligence", cascade="all, delete-orphan")
+    evidence_links: Mapped[List["IntelligenceInfoEvidence"]] = relationship(
+        back_populates="raw_intelligence", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_raw_status", "status"),
         Index("idx_raw_published", "published_at"),
         Index("idx_raw_source", "source_name"),
+        Index("idx_raw_source_url", "source_url"),
+        Index("idx_raw_content_hash", "content_hash"),
     )
 
 
@@ -85,10 +129,39 @@ class IntelligenceInfo(Base):
 
     # Relations
     raw_intelligence: Mapped["RawIntelligence"] = relationship(back_populates="info_records")
+    evidence_links: Mapped[List["IntelligenceInfoEvidence"]] = relationship(
+        back_populates="info_record", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_info_panels", "target_panel_ids", postgresql_using="gin"),
         Index("idx_info_created", "created_at"),
+    )
+
+
+class IntelligenceInfoEvidence(Base):
+    """Legacy INFO-to-L1 links retained as explicitly unverified provenance."""
+
+    __tablename__ = "intelligence_info_evidence"
+
+    info_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("intelligence_info.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    raw_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("raw_intelligence.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    locator: Mapped[dict] = mapped_column(JSONB, default=dict)
+    excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    info_record: Mapped["IntelligenceInfo"] = relationship(
+        back_populates="evidence_links"
+    )
+    raw_intelligence: Mapped["RawIntelligence"] = relationship(
+        back_populates="evidence_links"
     )
 
 

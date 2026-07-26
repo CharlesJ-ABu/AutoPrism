@@ -1,0 +1,43 @@
+:root {
+  color: #f7f5ff;
+  background: #0b0b1c;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+
+  --color-void: #0b0b1c;
+  --color-surface: rgba(24, 23, 54, .72);
+  --color-surface-strong: rgba(30, 28, 67, .9);
+  --color-surface-soft: rgba(255, 255, 255, .035);
+  --color-line: rgba(255, 255, 255, .1);
+  --color-line-strong: rgba(167, 139, 250, .28);
+  --color-ink: #f7f5ff;
+  --color-muted: #918da8;
+  --color-purple: #8b5cf6;
+  --color-purple-bright: #a78bfa;
+  --color-cyan: #22d3ee;
+  --color-green: #34d399;
+  --color-amber: #fbbf24;
+  --color-danger: #fb7185;
+
+  --void: var(--color-void);
+  --surface: var(--color-surface);
+  --surface-strong: var(--color-surface-strong);
+  --surface-soft: var(--color-surface-soft);
+  --line: var(--color-line);
+  --line-strong: var(--color-line-strong);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --purple: var(--color-purple);
+  --purple-bright: var(--color-purple-bright);
+  --cyan: var(--color-cyan);
+  --green: var(--color-green);
+  --amber: var(--color-amber);
+
+  --radius-xs: 5px;
+  --radius-sm: 9px;
+  --radius-md: 14px;
+  --radius-lg: 16px;
+  --shadow-panel: 0 24px 70px rgba(0, 0, 0, .2);
+  --transition-fast: 160ms ease;
+  --transition-base: 220ms ease;
+}

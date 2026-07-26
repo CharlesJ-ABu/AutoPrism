@@ -25,6 +25,8 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - OpenAI-compatible 与 Google Gemini 的供应商无关模型适配器。
 - 确定性 JSON 映射、Schema 校验、数值核算、交叉验证和审核记录。
 - 证据审计 UI：原始来源、JSON Pointer、抓取时间、文件/文本哈希及原始文件下载。
+- V1 延续型情报驾驶舱：共享 design tokens、角色/视角切换、可信态势图、
+  专业面板容器、全证据抽屉以及统一空/错/加载状态。
 - 三个真实 NHTSA 汽车面板，默认展示品牌、Tesla 2024 车型和安全评级车型。
 
 ## 快速启动
@@ -94,3 +96,7 @@ docker compose exec -T web alembic check
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和
 [待办](docs/V2_TODO.md)。
+
+V1/V2 验收差距见
+[差距矩阵](docs/V1_V2_GAP_MATRIX.md)，持续变更见
+[V2 Changelog](docs/V2_CHANGELOG.md)。

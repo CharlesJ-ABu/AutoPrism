@@ -1,11 +1,12 @@
 # AutoPrism V2 Test Record
 
-Last full validation: 2026-07-25 (Asia/Shanghai).
+Last full validation: 2026-07-27 (Asia/Shanghai).
 
 ## Automated backend
 
 `python -m unittest discover -s tests -v` passed 23/23 tests against the
-disposable PostgreSQL database.
+disposable PostgreSQL database. The fast no-database run also passed all
+18 applicable tests and skipped the 5 database tests explicitly.
 
 Coverage includes:
 
@@ -25,9 +26,14 @@ Coverage includes:
 ## Database migrations
 
 - `alembic check`: no schema drift.
-- current revision: `8a9c3d4e5f60`.
-- disposable database downgrade `8a9c3d4e5f60 -> d59076df48fb` succeeded.
-- re-upgrade to `8a9c3d4e5f60` succeeded.
+- current revision: `0002_backfill_legacy_evidence`.
+- preserved historical database upgraded its migration graph without deleting,
+  stamping or rewriting real data.
+- empty disposable database upgraded through the complete V2 chain and the V1
+  compatibility revisions.
+- disposable database downgrade
+  `0002_backfill_legacy_evidence -> 8a9c3d4e5f60` succeeded.
+- re-upgrade to `0002_backfill_legacy_evidence` succeeded.
 - second `alembic check` reported no new operations.
 
 ## Real data end-to-end
@@ -52,12 +58,13 @@ issues. Values use deterministic mappings rather than LLM arithmetic.
 - five Compose services started; frontend, web, PostgreSQL, and Redis healthy.
 - frontend Nginx successfully proxied `/api/v2/dashboards`.
 - `/ready` returned PostgreSQL and Redis `ok`.
-- browser desktop verification rendered all three panels and their evidence hashes.
-- provenance drawer showed JSON Pointer, timestamps, file/text hashes, Schema, UI DSL, source and artifact download.
+- browser 1440×800 verification rendered the V2 cockpit, verified situation
+  layer, all three panels and their evidence hashes.
+- provenance drawer showed every returned evidence fragment, JSON Pointer,
+  timestamps, file/text hashes, Schema, UI DSL, source and artifact download.
 - 390×844 responsive check: three panels rendered and body width equaled viewport width (no horizontal overflow).
-- V1-compatible dark cockpit redesign: desktop and 390×844 layouts passed,
-  the evidence trace terminal rendered correctly, and browser console checks
-  returned no warnings or errors.
+- V1-compatible role/view switcher and truthful no-geocode map state passed.
+- current V2 JavaScript bundle emitted no browser warnings or errors.
 
 ## Known non-blocking warnings
 
