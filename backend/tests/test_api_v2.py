@@ -40,6 +40,8 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     "name": "Official API",
                     "canonical_url": "https://example.test/data.json",
                     "kind": "api",
+                    "global_reputation": 1,
+                    "topic_authority": 1,
                 },
             )
             self.assertEqual(source_response.status_code, 201, source_response.text)

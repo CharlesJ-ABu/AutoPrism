@@ -47,6 +47,63 @@ export interface DashboardVersionDetail extends DashboardVersionRecord {
   panels: PanelVersionDefinition[];
 }
 
+export interface SourcePool {
+  id: string;
+  key: string;
+  name: string;
+  topic: string;
+  dashboard_version_key: string | null;
+  discovery_query: string | null;
+  settings: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SourceDefinition {
+  id: string;
+  pool_id: string;
+  key: string;
+  name: string;
+  canonical_url: string;
+  kind: 'html' | 'pdf' | 'csv' | 'xlsx' | 'rss' | 'api';
+  enabled: boolean;
+  requires_auth: boolean;
+  credential_reference: string | null;
+  robots_url: string | null;
+  terms_url: string | null;
+  global_reputation: number;
+  topic_authority: number;
+  refresh_policy: Record<string, unknown>;
+  request_config: Record<string, unknown>;
+  parser_config: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CollectionJob {
+  id: string;
+  source_definition_id: string;
+  idempotency_key: string;
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
+  attempt_count: number;
+  max_attempts: number;
+  policy_result: Record<string, unknown>;
+  result_snapshot_id: string | null;
+  error: Record<string, unknown>;
+  requested_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface HumanAction {
+  id: string;
+  collection_job_id: string;
+  reason_code: string;
+  instructions: string;
+  context: Record<string, unknown>;
+  state: 'open' | 'resolved' | 'dismissed';
+  created_at: string;
+  resolved_at: string | null;
+}
+
 export interface Evidence {
   fragment_id: string;
   locator_type: string;
@@ -156,5 +213,29 @@ export const api = {
     request<DashboardVersionSummary[]>(`/dashboards/${id}/versions`),
   getDashboardVersion: (id: string, version: number) =>
     request<DashboardVersionDetail>(`/dashboards/${id}/versions/${version}`),
+  listSourcePools: () => request<SourcePool[]>('/sources/pools'),
+  createSourcePool: (payload: Record<string, unknown>) =>
+    request<SourcePool>('/sources/pools', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listSources: () => request<SourceDefinition[]>('/sources'),
+  createSource: (poolId: string, payload: Record<string, unknown>) =>
+    request<SourceDefinition>(`/sources/pools/${poolId}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  collectSource: (sourceId: string) =>
+    request<CollectionJob>(`/sources/${sourceId}/collect`, { method: 'POST' }),
+  listCollectionJobs: () => request<CollectionJob[]>('/sources/jobs'),
+  listHumanActions: () => request<HumanAction[]>('/sources/actions'),
+  runExtraction: (payload: { panel_version_id: string; snapshot_id: string }) =>
+    request<{ run_id: string; observation_ids: string[]; issues: Array<{ path: string; message: string }> }>(
+      '/extractions',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
   artifactUrl: (id: string) => `${API_BASE}/evidence/artifacts/${id}`,
 };

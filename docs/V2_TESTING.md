@@ -67,6 +67,9 @@ issues. Values use deterministic mappings rather than LLM arithmetic.
 - 390×844 responsive check: three panels rendered and body width equaled viewport width (no horizontal overflow).
 - V1-compatible role/view switcher and truthful no-geocode map state passed.
 - current V2 JavaScript bundle emitted no browser warnings or errors.
+- operations smoke loaded the real 3-source/6-job state, kept all collection
+  actions disabled until compliance acknowledgement, and exposed the human
+  action and Schema-bound extraction paths without mutating production data.
 
 ## Known non-blocking warnings
 

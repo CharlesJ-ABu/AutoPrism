@@ -44,7 +44,7 @@ read-only comparison source.
 | M0 Baseline | Full audit, V1/V2 same-size desktop baseline, responsive/console baseline, executable gap ledger | This document, 1440×800 browser captures, clean `v2` status, baseline test logs | Complete |
 | M1 Cockpit foundation | Tokens, reusable Shell/Panel/Button/Status/Drawer/AsyncState, role/view switcher, truthful situation map, split feature modules | Type check/build, 1440×800 and 390×844 screenshots, current-bundle console clean, full evidence drawer smoke | Complete |
 | M2 Dashboard lifecycle | Version history, clone/edit as new immutable version, explicit draft/frozen states, structured Schema/UI DSL editor and validation feedback | API integration tests, browser history/edit/confirmation smoke, Schema-bound DSL unit tests | Complete |
-| M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser job/action smoke | Pending |
+| M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser source/compliance/job/action smoke | Complete |
 | M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Pending |
 | M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Pending |
 
@@ -62,7 +62,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | JSON Schema and UI DSL | done with field-bound DSL validation | structured JSON editor | done | done for safe subset |
 | Manual edit and save new version | done | done | done | done |
 | Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
-| Import/collection | done for registered sources | missing | done | partial |
+| Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
 | Evidence viewing | done | first fragment only | partial | partial |
 | Revision history | done for observations | missing | done | partial |
 | Cross-source validation | done | missing | done | partial |
@@ -131,3 +131,24 @@ has a real path with missing required behavior; **missing** has no usable path;
 - Safe UI DSL validation rejects unknown node types, nonexistent fields,
   non-array table fields and columns absent from the array-item Schema.
 - Frontend type check/build passed; full disposable-database suite passed 24/24.
+
+## M3 verification record
+
+- UI lists real source pools, registered sources, collection jobs and
+  human-action requests from V2 APIs.
+- Users can register HTML, PDF, CSV, Excel, RSS and JSON API sources and must
+  explicitly enter both global reputation and topic authority. The backend no
+  longer supplies an unverified `0.5` default.
+- Creating a collection job is disabled until the user confirms authorization
+  and accepts the pause-on-restriction policy.
+- Login, terms, robots, rate-limit and access restrictions remain backend
+  policy gates; the UI states that CAPTCHA and access blocks cannot be bypassed.
+- Successful jobs expose a real Schema-bound extraction action targeting an
+  existing frozen panel version. Deterministic mappings run in code; missing
+  model credentials return an explicit error.
+- Browser smoke loaded 3 registered official sources, 6 historical jobs and
+  zero open human actions. All 3 collection buttons were disabled before the
+  compliance acknowledgement and enabled only after it. No test collection was
+  added to the real database.
+- Local file upload, authenticated browser collection, CAPTCHA continuation,
+  scheduler execution and encrypted credential storage remain explicit TODOs.

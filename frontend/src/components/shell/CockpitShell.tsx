@@ -4,6 +4,7 @@ import {
   Archive,
   ChevronRight,
   Database,
+  DatabaseZap,
   Layers3,
   History,
   Plus,
@@ -40,6 +41,7 @@ export function CockpitShell({
   loading,
   onRefresh,
   onManageVersions,
+  onManageOperations,
   children,
 }: {
   dashboards: DashboardListItem[];
@@ -57,6 +59,7 @@ export function CockpitShell({
   loading: boolean;
   onRefresh: () => void;
   onManageVersions?: () => void;
+  onManageOperations?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -128,6 +131,11 @@ export function CockpitShell({
             {description && <p>{description}</p>}
           </div>
           <div className="topbar-actions">
+            {onManageOperations && (
+              <Button onClick={onManageOperations}>
+                <DatabaseZap size={14} /> 采集与处理
+              </Button>
+            )}
             {version && <span className="version-pill"><Archive size={14} /> 当前版本 {version}</span>}
             {version && onManageVersions && (
               <Button onClick={onManageVersions}>

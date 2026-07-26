@@ -44,3 +44,16 @@ edition and is not a merge target.
 - Updated the dynamic renderer to resolve metric and table fields from the
   frozen UI DSL instead of assuming `record_count` and `records`.
 - Documented the supported safe subset and the isolated custom React boundary.
+
+### M3 — Compliant acquisition workspace
+
+- Connected source-pool, source registration, collection-job and human-action
+  APIs to a cockpit operations drawer.
+- Added an explicit authorization/compliance acknowledgement before collection
+  controls become available.
+- Removed implicit `0.5` source-reputation and topic-authority defaults; both
+  values are now required human inputs.
+- Added job status, snapshot IDs, failure/policy details and a Schema-bound
+  extraction action for successful snapshots.
+- Kept login restrictions, CAPTCHA, terms, robots and access blocks in the
+  pause-for-human path; no bypass path was added.

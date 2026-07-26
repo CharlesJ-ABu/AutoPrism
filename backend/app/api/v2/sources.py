@@ -41,8 +41,8 @@ class SourceCreate(BaseModel):
     credential_reference: str | None = None
     robots_url: HttpUrl | None = None
     terms_url: HttpUrl | None = None
-    global_reputation: float = Field(default=0.5, ge=0, le=1)
-    topic_authority: float = Field(default=0.5, ge=0, le=1)
+    global_reputation: float = Field(ge=0, le=1)
+    topic_authority: float = Field(ge=0, le=1)
     refresh_policy: dict[str, Any] = Field(default_factory=dict)
     request_config: dict[str, Any] = Field(default_factory=dict)
     parser_config: dict[str, Any] = Field(default_factory=dict)

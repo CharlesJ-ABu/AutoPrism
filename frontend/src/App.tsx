@@ -8,6 +8,7 @@ import { SituationMap } from './components/situation/SituationMap';
 import { EmptyState, ErrorState, LoadingState } from './components/ui';
 import { DashboardComposer } from './features/dashboards/DashboardComposer';
 import { VersionManagerDrawer } from './features/dashboards/VersionManagerDrawer';
+import { OperationsDrawer } from './features/operations/OperationsDrawer';
 import {
   api,
   type DashboardListItem,
@@ -38,6 +39,7 @@ function App() {
   const [error, setError] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
+  const [operationsOpen, setOperationsOpen] = useState(false);
 
   const loadDashboards = async (preferredId?: string) => {
     setLoading(true);
@@ -133,6 +135,7 @@ function App() {
       loading={loading}
       onRefresh={() => void loadDashboards(selectedId)}
       onManageVersions={view ? () => setVersionManagerOpen(true) : undefined}
+      onManageOperations={() => setOperationsOpen(true)}
     >
       {error && <ErrorState message={error} onRetry={() => void loadDashboards(selectedId)} />}
       {loading && !view && <LoadingState />}
@@ -205,6 +208,13 @@ function App() {
           onClose={() => setVersionManagerOpen(false)}
           onOpenVersion={(version) => openDashboardVersion(view.dashboard.id, version)}
           onCreated={() => loadDashboards(view.dashboard.id)}
+        />
+      )}
+      {operationsOpen && (
+        <OperationsDrawer
+          panels={view?.panels ?? []}
+          onClose={() => setOperationsOpen(false)}
+          onExtractionComplete={() => loadDashboards(selectedId)}
         />
       )}
     </CockpitShell>

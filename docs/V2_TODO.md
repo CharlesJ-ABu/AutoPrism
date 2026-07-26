@@ -9,7 +9,8 @@
   heatmap, radar, ticker, and network components.
 - Isolated custom React compile/preview/runtime with dependency allowlist,
   CSP, resource limits, and no ambient credentials.
-- Full source-pool editor, cross-source trust ranking, and review-queue UI.
+- Source-pool editing and deletion (creation/registration/collection are now connected).
+- Cross-source trust ranking and review-queue UI.
 - L2 service that selects only eligible stored observations and records its
   complete input set.
 - Artifact garbage-collection report for files left orphaned by failed
