@@ -8,6 +8,45 @@ export interface DashboardListItem {
   latest_version: { id: string; version: number; state: string } | null;
 }
 
+export interface DashboardVersionRecord {
+  id: string;
+  dashboard_id: string;
+  version: number;
+  state: 'draft' | 'published' | 'archived';
+  research_brief: Record<string, unknown>;
+  generation_model: string | null;
+  generation_prompt_version: string | null;
+  created_at: string;
+}
+
+export interface DashboardVersionSummary extends DashboardVersionRecord {
+  panel_count: number;
+}
+
+export interface PanelVersionDefinition {
+  id: string;
+  panel_id: string;
+  key: string;
+  version: number;
+  title: string;
+  description: string;
+  data_schema: Record<string, unknown>;
+  template_kind: 'ui_dsl' | 'custom_react';
+  ui_dsl: Record<string, unknown>;
+  component_code: string | null;
+  component_code_sha256: string | null;
+  visualization_contract: Record<string, unknown>;
+  extraction_prompt: string;
+  extraction_prompt_version: string;
+  model_settings: Record<string, unknown>;
+  source_pool_id: string | null;
+  created_at: string;
+}
+
+export interface DashboardVersionDetail extends DashboardVersionRecord {
+  panels: PanelVersionDefinition[];
+}
+
 export interface Evidence {
   fragment_id: string;
   locator_type: string;
@@ -22,6 +61,17 @@ export interface Evidence {
   artifact_media_type: string;
 }
 
+export interface UiDslNode {
+  type: 'stack' | 'metric' | 'table' | 'provenance';
+  field?: string;
+  label?: string;
+  unit?: string;
+  columns?: string[];
+  page_size?: number;
+  children?: UiDslNode[];
+  [key: string]: unknown;
+}
+
 export interface PanelView {
   id: string;
   key: string;
@@ -30,9 +80,9 @@ export interface PanelView {
   description: string;
   data_schema: Record<string, unknown>;
   template_kind: string;
-  ui_dsl: { children?: Array<{ type: string; columns?: string[] }> };
+  ui_dsl: UiDslNode;
   extraction_prompt_version: string;
-  data: { record_count?: number; records?: Array<Record<string, unknown>> } | null;
+  data: Record<string, unknown> | null;
   extraction: {
     id: string;
     provider: string;
@@ -46,7 +96,7 @@ export interface PanelView {
 
 export interface DashboardView {
   dashboard: DashboardListItem;
-  version: { id: string; version: number; state: string };
+  version: DashboardVersionRecord;
   panels: PanelView[];
 }
 
@@ -98,9 +148,13 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   createDashboardVersion: (id: string, payload: Record<string, unknown>) =>
-    request(`/dashboards/${id}/versions`, {
+    request<DashboardVersionDetail>(`/dashboards/${id}/versions`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  listDashboardVersions: (id: string) =>
+    request<DashboardVersionSummary[]>(`/dashboards/${id}/versions`),
+  getDashboardVersion: (id: string, version: number) =>
+    request<DashboardVersionDetail>(`/dashboards/${id}/versions/${version}`),
   artifactUrl: (id: string) => `${API_BASE}/evidence/artifacts/${id}`,
 };

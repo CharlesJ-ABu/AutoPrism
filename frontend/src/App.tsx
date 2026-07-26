@@ -7,6 +7,7 @@ import { CockpitShell, type Perspective } from './components/shell/CockpitShell'
 import { SituationMap } from './components/situation/SituationMap';
 import { EmptyState, ErrorState, LoadingState } from './components/ui';
 import { DashboardComposer } from './features/dashboards/DashboardComposer';
+import { VersionManagerDrawer } from './features/dashboards/VersionManagerDrawer';
 import {
   api,
   type DashboardListItem,
@@ -36,6 +37,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
+  const [versionManagerOpen, setVersionManagerOpen] = useState(false);
 
   const loadDashboards = async (preferredId?: string) => {
     setLoading(true);
@@ -80,6 +82,19 @@ function App() {
     }
   };
 
+  const openDashboardVersion = async (dashboardId: string, version: number) => {
+    setLoading(true);
+    setError('');
+    setSelectedPanel(undefined);
+    try {
+      setView(await api.getDashboardView(dashboardId, version));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '版本加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const visibleDashboards = useMemo(
     () =>
       dashboards.filter((item) =>
@@ -117,6 +132,7 @@ function App() {
       version={view?.version.version}
       loading={loading}
       onRefresh={() => void loadDashboards(selectedId)}
+      onManageVersions={view ? () => setVersionManagerOpen(true) : undefined}
     >
       {error && <ErrorState message={error} onRetry={() => void loadDashboards(selectedId)} />}
       {loading && !view && <LoadingState />}
@@ -179,6 +195,16 @@ function App() {
             setComposerOpen(false);
             void loadDashboards(id);
           }}
+        />
+      )}
+      {versionManagerOpen && view && (
+        <VersionManagerDrawer
+          dashboardId={view.dashboard.id}
+          dashboardTitle={view.dashboard.title}
+          viewedVersion={view.version.version}
+          onClose={() => setVersionManagerOpen(false)}
+          onOpenVersion={(version) => openDashboardVersion(view.dashboard.id, version)}
+          onCreated={() => loadDashboards(view.dashboard.id)}
         />
       )}
     </CockpitShell>

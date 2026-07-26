@@ -1,6 +1,10 @@
 import unittest
 
-from app.domain.panel_schema import validate_panel_payload, validate_panel_schema
+from app.domain.panel_schema import (
+    validate_panel_payload,
+    validate_panel_schema,
+    validate_ui_dsl,
+)
 
 
 VALID_SCHEMA = {
@@ -44,6 +48,42 @@ class PanelSchemaTests(unittest.TestCase):
             {"brand": "BYD", "sales": "not-a-number"},
         )
         self.assertEqual(len(issues), 1)
+
+    def test_safe_ui_dsl_is_bound_to_schema_fields(self):
+        schema = {
+            **VALID_SCHEMA,
+            "properties": {
+                **VALID_SCHEMA["properties"],
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                        "required": ["name"],
+                    },
+                },
+            },
+        }
+        dsl = {
+            "type": "stack",
+            "children": [
+                {"type": "metric", "field": "sales", "label": "Sales"},
+                {"type": "table", "field": "records", "columns": ["name"]},
+                {"type": "provenance", "show_source": True},
+            ],
+        }
+        self.assertEqual(validate_ui_dsl(schema, dsl), ())
+        issues = validate_ui_dsl(
+            schema,
+            {"type": "chart", "field": "sales"},
+        )
+        self.assertIn("unsupported UI DSL type", issues[0].message)
+        self.assertTrue(
+            validate_ui_dsl(
+                schema,
+                {"type": "table", "field": "sales", "columns": ["unknown"]},
+            )
+        )
 
 
 if __name__ == "__main__":

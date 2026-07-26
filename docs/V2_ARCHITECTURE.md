@@ -134,6 +134,11 @@ The current UI renders the safe `metric`, `table`, and `provenance` subset.
 Custom React source can be stored but isolated compilation and runtime remain a
 documented follow-up.
 
+The executable validation rules and examples are documented in
+[`V2_SCHEMA_UI_DSL.md`](V2_SCHEMA_UI_DSL.md). The API rejects unknown node
+types, invalid field references and table columns that are absent from the
+frozen data Schema.
+
 ## Visual continuity
 
 V2 keeps the V1 product identity: a dark intelligence cockpit, translucent

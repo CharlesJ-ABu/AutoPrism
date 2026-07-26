@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Database,
   Layers3,
+  History,
   Plus,
   Radio,
   RefreshCw,
@@ -38,6 +39,7 @@ export function CockpitShell({
   version,
   loading,
   onRefresh,
+  onManageVersions,
   children,
 }: {
   dashboards: DashboardListItem[];
@@ -54,6 +56,7 @@ export function CockpitShell({
   version?: number;
   loading: boolean;
   onRefresh: () => void;
+  onManageVersions?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -126,6 +129,11 @@ export function CockpitShell({
           </div>
           <div className="topbar-actions">
             {version && <span className="version-pill"><Archive size={14} /> 当前版本 {version}</span>}
+            {version && onManageVersions && (
+              <Button onClick={onManageVersions}>
+                <History size={14} /> 版本与编辑
+              </Button>
+            )}
             <IconButton aria-label="刷新数据" onClick={onRefresh}>
               <RefreshCw size={17} className={loading ? 'spin' : ''} />
             </IconButton>

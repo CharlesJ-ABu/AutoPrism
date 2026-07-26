@@ -11,10 +11,23 @@ export function DashboardPanel({
   panel: PanelView;
   onInspect: () => void;
 }) {
-  const records = Array.isArray(panel.data?.records) ? panel.data.records : [];
-  const columns = panel.ui_dsl.children?.find((item) => item.type === 'table')?.columns
-    ?? (records[0] ? Object.keys(records[0]) : []);
-  const visibleRecords = records.slice(0, 8);
+  const dslNodes = panel.ui_dsl.type === 'stack'
+    ? panel.ui_dsl.children ?? []
+    : [panel.ui_dsl];
+  const metricNode = dslNodes.find((item) => item.type === 'metric');
+  const tableNode = dslNodes.find((item) => item.type === 'table');
+  const metricField = metricNode?.field;
+  const metricValue = metricField ? panel.data?.[metricField] : undefined;
+  const tableField = tableNode?.field ?? 'records';
+  const rawRows = panel.data?.[tableField];
+  const records = Array.isArray(rawRows)
+    ? rawRows.filter(
+        (row): row is Record<string, unknown> =>
+          typeof row === 'object' && row !== null && !Array.isArray(row),
+      )
+    : [];
+  const columns = tableNode?.columns ?? (records[0] ? Object.keys(records[0]) : []);
+  const visibleRecords = records.slice(0, tableNode?.page_size ?? 8);
   const evidence = panel.evidence[0];
   const valid = panel.extraction?.validation.valid === true;
 
@@ -35,19 +48,21 @@ export function DashboardPanel({
       </div>
       <div className="metric-row">
         <div className="metric-value">
-          {panel.data?.record_count === undefined
+          {metricValue === undefined || metricValue === null
             ? '—'
-            : Number(panel.data.record_count).toLocaleString()}
+            : typeof metricValue === 'number'
+              ? metricValue.toLocaleString()
+              : String(metricValue)}
         </div>
         <div>
-          <strong>数据库记录</strong>
+          <strong>{metricNode?.label ?? metricField ?? '未配置指标'}</strong>
           <span>LATEST IMMUTABLE SNAPSHOT</span>
         </div>
         <Status tone={valid ? 'ok' : panel.extraction ? 'warning' : 'neutral'}>
           {valid ? 'SCHEMA VALID' : panel.extraction ? 'VALIDATION ISSUE' : 'NO EXTRACTION'}
         </Status>
       </div>
-      {visibleRecords.length > 0 ? (
+      {tableNode && visibleRecords.length > 0 ? (
         <div className="table-wrap">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
@@ -66,11 +81,11 @@ export function DashboardPanel({
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : tableNode ? (
         <div className="panel-empty">
           该冻结面板尚无结构化记录。系统不会补零或生成演示数据。
         </div>
-      )}
+      ) : null}
       <footer className="panel-footer">
         <span><Database size={13} /> {evidence ? safeHostname(evidence.source_url) : '等待可信采集'}</span>
         <span><Fingerprint size={13} /> {evidence ? shortHash(evidence.artifact_sha256) : '无文件哈希'}</span>

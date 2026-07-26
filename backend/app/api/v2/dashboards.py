@@ -13,7 +13,7 @@ from app.ai.providers import ModelConfig, create_provider
 from app.core.config import settings
 from app.core.database import get_db
 from app.domain.evidence import sha256_bytes
-from app.domain.panel_schema import validate_panel_schema
+from app.domain.panel_schema import validate_panel_schema, validate_ui_dsl
 from app.models.dashboards import (
     Dashboard,
     DashboardVersion,
@@ -138,7 +138,10 @@ async def create_dashboard_version(
     for panel in payload.panels:
         if not KEY_PATTERN.fullmatch(panel.key):
             raise HTTPException(status_code=422, detail=f"invalid panel key: {panel.key}")
-        issues = validate_panel_schema(panel.data_schema)
+        issues = (
+            validate_panel_schema(panel.data_schema)
+            + validate_ui_dsl(panel.data_schema, panel.ui_dsl)
+        )
         if issues:
             raise HTTPException(
                 status_code=422,
@@ -218,6 +221,35 @@ async def create_dashboard_version(
         created_panels.append(_panel_version_dict(panel_version, definition.key))
     await db.commit()
     return {**_version_dict(version), "panels": created_panels}
+
+
+@router.get("/{dashboard_id}/versions")
+async def list_dashboard_versions(
+    dashboard_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    dashboard = await db.get(Dashboard, dashboard_id)
+    if dashboard is None:
+        raise HTTPException(status_code=404, detail="dashboard not found")
+    rows = (
+        await db.execute(
+            select(DashboardVersion, func.count(PanelVersion.id))
+            .outerjoin(
+                PanelVersion,
+                PanelVersion.dashboard_version_id == DashboardVersion.id,
+            )
+            .where(DashboardVersion.dashboard_id == dashboard_id)
+            .group_by(DashboardVersion.id)
+            .order_by(desc(DashboardVersion.version))
+        )
+    ).all()
+    return [
+        {
+            **_version_dict(version),
+            "panel_count": panel_count,
+        }
+        for version, panel_count in rows
+    ]
 
 
 @router.get("/{dashboard_id}/versions/{version_number}")

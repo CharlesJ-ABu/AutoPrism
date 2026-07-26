@@ -99,6 +99,33 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(version["version"], 1)
             self.assertEqual(version["panels"][0]["template_kind"], "ui_dsl")
 
+            history_response = await client.get(
+                f"/api/v2/dashboards/{dashboard['id']}/versions"
+            )
+            self.assertEqual(
+                history_response.status_code,
+                200,
+                history_response.text,
+            )
+            history = history_response.json()
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]["version"], 1)
+            self.assertEqual(history[0]["state"], "draft")
+            self.assertEqual(history[0]["panel_count"], 1)
+
+            detail_response = await client.get(
+                f"/api/v2/dashboards/{dashboard['id']}/versions/1"
+            )
+            self.assertEqual(
+                detail_response.status_code,
+                200,
+                detail_response.text,
+            )
+            detail = detail_response.json()
+            self.assertEqual(detail["panels"][0]["key"], "registrations")
+            self.assertIn("data_schema", detail["panels"][0])
+            self.assertIn("ui_dsl", detail["panels"][0])
+
             view_response = await client.get(
                 f"/api/v2/dashboards/{dashboard['id']}/versions/1/view"
             )

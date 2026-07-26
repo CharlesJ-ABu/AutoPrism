@@ -28,3 +28,19 @@ edition and is not a merge target.
   stamping.
 - Aligned V2 legacy ORM metadata with the preserved V1 evidence columns and
   indexes; migration autogeneration now reports no drift.
+
+### M2 — Immutable dashboard lifecycle
+
+- Added ordered dashboard-version history and complete version-detail API
+  coverage.
+- Added a version manager that opens any historical version and reconstructs a
+  complete editable contract.
+- Added separate append-only actions for saving a new draft and publishing a
+  new frozen version. Publication requires explicit acknowledgement.
+- Preserved and exposed component source/hash, JSON Schema, UI DSL,
+  visualization contract, extraction prompt/version, model settings and source
+  pool binding in revision payloads.
+- Added executable safe UI DSL validation bound to the panel JSON Schema.
+- Updated the dynamic renderer to resolve metric and table fields from the
+  frozen UI DSL instead of assuming `record_count` and `records`.
+- Documented the supported safe subset and the isolated custom React boundary.

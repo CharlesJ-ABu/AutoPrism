@@ -43,7 +43,7 @@ read-only comparison source.
 |---|---|---|---|
 | M0 Baseline | Full audit, V1/V2 same-size desktop baseline, responsive/console baseline, executable gap ledger | This document, 1440×800 browser captures, clean `v2` status, baseline test logs | Complete |
 | M1 Cockpit foundation | Tokens, reusable Shell/Panel/Button/Status/Drawer/AsyncState, role/view switcher, truthful situation map, split feature modules | Type check/build, 1440×800 and 390×844 screenshots, current-bundle console clean, full evidence drawer smoke | Complete |
-| M2 Dashboard lifecycle | Version history, clone/edit as new immutable version, explicit draft/frozen states, structured Schema/UI DSL editor and validation feedback | API integration tests and browser create/edit/freeze/switch smoke | Pending |
+| M2 Dashboard lifecycle | Version history, clone/edit as new immutable version, explicit draft/frozen states, structured Schema/UI DSL editor and validation feedback | API integration tests, browser history/edit/confirmation smoke, Schema-bound DSL unit tests | Complete |
 | M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser job/action smoke | Pending |
 | M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Pending |
 | M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Pending |
@@ -59,9 +59,9 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Main dashboard list and switch | done | done | partial | partial |
 | Create main dashboard | done | done | partial | partial |
 | LLM child-panel design | done | done | partial | partial |
-| JSON Schema and UI DSL | done | raw JSON editor | done | partial |
-| Manual edit and save new version | create-version only | missing | missing | missing |
-| Freeze component/Schema/prompt/model | done | misleading single-step save | partial | partial |
+| JSON Schema and UI DSL | done with field-bound DSL validation | structured JSON editor | done | done for safe subset |
+| Manual edit and save new version | done | done | done | done |
+| Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
 | Import/collection | done for registered sources | missing | done | partial |
 | Evidence viewing | done | first fragment only | partial | partial |
 | Revision history | done for observations | missing | done | partial |
@@ -114,3 +114,20 @@ has a real path with missing required behavior; **missing** has no usable path;
   overflow, all-evidence drawer rendered, no current-bundle warnings/errors.
 - Browser mobile 390×844: body width 384 px, 3 panels, 4 perspective controls,
   no error state, no horizontal overflow.
+
+## M2 verification record
+
+- Dashboard history API returns ordered immutable versions with panel counts.
+- Version detail API returns complete child-panel contracts.
+- Version editor reconstructs full Schema, UI DSL, optional component source,
+  visualization contract, prompt version, model settings and source-pool binding.
+- Draft save and frozen publication both create new versions; no update endpoint
+  or UI path mutates an existing version.
+- Publication remains disabled until the user acknowledges append-only behavior.
+- Browser smoke loaded a 10,175-character historical version payload, displayed
+  the custom-runtime limitation, and verified the publish control changed from
+  disabled to enabled only after confirmation. It did not create test history
+  in the real database.
+- Safe UI DSL validation rejects unknown node types, nonexistent fields,
+  non-array table fields and columns absent from the array-item Schema.
+- Frontend type check/build passed; full disposable-database suite passed 24/24.

@@ -4,9 +4,9 @@ Last full validation: 2026-07-27 (Asia/Shanghai).
 
 ## Automated backend
 
-`python -m unittest discover -s tests -v` passed 23/23 tests against the
+`python -m unittest discover -s tests -v` passed 24/24 tests against the
 disposable PostgreSQL database. The fast no-database run also passed all
-18 applicable tests and skipped the 5 database tests explicitly.
+19 applicable tests and skipped the 5 database tests explicitly.
 
 Coverage includes:
 
@@ -19,6 +19,8 @@ Coverage includes:
 - source pool, snapshot, artifact, and fragment persistence;
 - missing credential blocking and human-action creation;
 - frozen Schema extraction with per-field evidence IDs;
+- ordered dashboard history, complete version detail and append-only version creation;
+- safe UI DSL nodes bound to fields and table columns in the frozen Schema;
 - provider-neutral adapters and deterministic JSON mapping;
 - deterministic decimal calculation and replay hash;
 - numeric cross-source tolerance and review routing.

@@ -99,4 +99,5 @@ docker compose exec -T web alembic check
 
 V1/V2 验收差距见
 [差距矩阵](docs/V1_V2_GAP_MATRIX.md)，持续变更见
-[V2 Changelog](docs/V2_CHANGELOG.md)。
+[V2 Changelog](docs/V2_CHANGELOG.md)，动态面板契约见
+[JSON Schema / UI DSL 规范](docs/V2_SCHEMA_UI_DSL.md)。
