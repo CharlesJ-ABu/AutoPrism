@@ -48,8 +48,10 @@ historical M1–M5 screenshots are not current acceptance evidence.
 - [ ] Capture current-worktree same-size V1/V2 desktop screenshots and complete
   desktop/mobile, console, responsive and interaction smoke. Browser runtime is
   currently unavailable.
-- [ ] Record the final M6 commit and confirm `origin/v2` is fast-forward before
-  pushing. Do not create a PR or merge from `v2` to `main`.
+- [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
+  release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
+  `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
+  merge from `v2` to `main`.
 
 ## Truthful current reference state
 
