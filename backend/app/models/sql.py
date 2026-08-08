@@ -154,7 +154,11 @@ class IntelligenceInfoEvidence(Base):
         ForeignKey("raw_intelligence.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    locator: Mapped[dict] = mapped_column(JSONB, default=dict)
+    locator: Mapped[dict] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=sa.text("'{}'::jsonb"),
+    )
     excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     info_record: Mapped["IntelligenceInfo"] = relationship(

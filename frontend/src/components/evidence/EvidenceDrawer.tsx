@@ -22,8 +22,12 @@ export function EvidenceDrawer({
       <section className="drawer-section">
         <div className="drawer-section-title">
           <h3>冻结契约</h3>
-          <Status tone={panel.extraction?.validation.valid ? 'ok' : 'warning'}>
-            {panel.extraction?.validation.valid ? 'SCHEMA VALID' : 'SCHEMA NOT VALID'}
+          <Status tone={!panel.extraction ? 'neutral' : panel.extraction.validation.valid ? 'ok' : 'danger'}>
+            {!panel.extraction
+              ? 'NOT RUN'
+              : panel.extraction.validation.valid
+                ? 'OUTPUT VALIDATED'
+                : 'OUTPUT INVALID'}
           </Status>
         </div>
         <dl className="detail-list">
@@ -37,7 +41,7 @@ export function EvidenceDrawer({
 
       <section className="drawer-section">
         <div className="drawer-section-title">
-          <h3>原始证据定位器</h3>
+          <h3>本次抽取引用片段</h3>
           <Status tone={panel.evidence.length ? 'info' : 'neutral'}>
             {panel.evidence.length} FRAGMENTS
           </Status>
@@ -57,7 +61,7 @@ export function EvidenceDrawer({
                   <div><dt>媒体类型</dt><dd>{evidence.artifact_media_type}</dd></div>
                   <div><dt>原始字节</dt><dd>{evidence.artifact_byte_size.toLocaleString()} bytes</dd></div>
                   <div><dt>文件 SHA-256</dt><dd className="mono break">{evidence.artifact_sha256}</dd></div>
-                  <div><dt>文本 SHA-256</dt><dd className="mono break">{evidence.text_sha256}</dd></div>
+                  <div><dt>文本 SHA-256</dt><dd className="mono break">{evidence.text_sha256 ?? '片段未提供文本哈希'}</dd></div>
                 </dl>
                 <div className="drawer-actions">
                   <a className="secondary-button" href={evidence.source_url} target="_blank" rel="noreferrer">
@@ -72,7 +76,9 @@ export function EvidenceDrawer({
           </div>
         ) : (
           <div className="panel-empty">
-            当前面板没有证据定位器，因此不能被标记为可信。
+            {panel.extraction
+              ? '本次抽取没有返回引用片段，因此不能据此标记为可信。'
+              : '尚无抽取运行；冻结 Schema 存在，但没有可展示的抽取血缘。'}
           </div>
         )}
       </section>

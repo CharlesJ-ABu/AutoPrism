@@ -1,21 +1,50 @@
 # AutoPrism V2 / SaaS TODO
 
+## M6 release closeout
+
+- Obtain a browser runtime and capture new same-size V1/V2 desktop screenshots
+  from the exact current worktree.
+- Repeat 390×844 responsive and horizontal-overflow checks.
+- Inspect the current JavaScript console and exercise loading, empty, error,
+  dangerous-action, dynamic panel, evidence, revision, validation and trust
+  interactions.
+- Record the final commit, verify `origin/v2` is fast-forward and push only
+  after the visual gate passes. Never merge or open a `v2` → `main` PR.
+
+This verification-runtime gap is separate from authenticated Playwright
+collection as a product feature. The current environment simply has no browser
+with which to run the M6 visual release gate.
+
+## M7 — Units, currency and uncertainty
+
+- General deterministic unit, currency and time-basis conversion registry.
+- Explicit conversion-run lineage that freezes source/target units, rates,
+  effective timestamps, formulas and code/engine versions.
+- Deterministic precision and rounding policies.
+- Error bounds, propagation plans and reproducible error checks.
+- A trusted deterministic calculation engine version and policy allowlist only
+  after unit/conversion/error replay is complete.
+- Migration, API, Trust, L2 and UI tests proving conversions cannot silently
+  change comparison scope or introduce default values.
+
+Until M7 is complete, Decimal calculation runs are stored as UNVERIFIED and no
+unit/currency/error capability is represented as trusted.
+
 ## V2 next
 
 - Google programmable search discovery with user-supplied configuration.
-- General deterministic unit, currency, and time-basis conversion registry.
 - Scheduler UI and refresh-policy execution.
 - Expand safe UI DSL beyond metric/table/provenance to chart, timeline, map,
   heatmap, radar, ticker, and network components.
 - Isolated custom React compile/preview/runtime with dependency allowlist,
   CSP, resource limits, and no ambient credentials.
-- Source-pool editing and deletion (creation/registration/collection are now connected).
-- Direct `MetricObservation → ExtractionRun` lineage and multi-fragment
-  observation evidence relations.
+- Source-pool editing and deletion (creation/registration/collection are connected).
 - Identity-backed reviewer/reviser principals; current actor labels are
   explicitly self-asserted.
+- Evidence-bound manual-revision attestation; current revisions remain
+  append-only and visible but cannot become trusted eligible.
 - Optional evidence-bound narrative L2 provider after authentication and model
-  governance; deterministic stored-input L2 is now implemented.
+  governance; deterministic stored-input L2 is implemented.
 - Artifact garbage-collection report for files left orphaned by failed
   transactions; never delete without an explicit reviewed policy.
 - Remove transitional V1-development columns from `review_cases` only after a

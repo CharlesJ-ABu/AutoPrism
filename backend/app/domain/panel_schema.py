@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+import math
+from typing import Any
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
@@ -14,6 +16,8 @@ class SchemaIssue:
 
 
 def validate_panel_schema(schema: Mapping[str, Any]) -> tuple[SchemaIssue, ...]:
+    if not isinstance(schema, Mapping):
+        return (SchemaIssue("$", "panel schema must be an object"),)
     issues: list[SchemaIssue] = []
     try:
         Draft202012Validator.check_schema(schema)
@@ -68,13 +72,126 @@ def validate_panel_payload(
     if schema_issues:
         return schema_issues
     validator = Draft202012Validator(schema)
-    return tuple(
+    issues = [
         SchemaIssue(
             "$" + "".join(f"[{part!r}]" for part in error.absolute_path),
             error.message,
         )
         for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.path))
-    )
+    ]
+
+    def reject_non_finite(value: Any, path: str) -> None:
+        if isinstance(value, float) and not math.isfinite(value):
+            issues.append(SchemaIssue(path, "numeric values must be finite"))
+        elif isinstance(value, Mapping):
+            for key, item in value.items():
+                reject_non_finite(item, f"{path}[{key!r}]")
+        elif isinstance(value, (list, tuple)):
+            for index, item in enumerate(value):
+                reject_non_finite(item, f"{path}[{index}]")
+
+    reject_non_finite(payload, "$")
+    return tuple(issues)
+
+
+def validate_observation_contract(
+    schema: Mapping[str, Any],
+    *,
+    metric_key: str,
+    raw_value: Any,
+    normalized_value: Any,
+    unit: str | None,
+    dimensions: Any,
+) -> tuple[SchemaIssue, ...]:
+    """Validate one INFO observation against its frozen panel schema."""
+
+    issues = list(validate_panel_schema(schema))
+    if issues:
+        return tuple(issues)
+    properties = schema["properties"]
+    metric_definition = properties.get(metric_key)
+    if not isinstance(metric_definition, dict) or metric_definition.get("type") not in {
+        "number",
+        "integer",
+    }:
+        issues.append(
+            SchemaIssue("$.metric_key", "metric is not a numeric schema property")
+        )
+        return tuple(issues)
+    for name, container in (
+        ("raw_value", raw_value),
+        ("normalized_value", normalized_value),
+    ):
+        if not isinstance(container, dict) or set(container) != {"value"}:
+            issues.append(
+                SchemaIssue(f"$.{name}", "must contain exactly one value field")
+            )
+            continue
+        value = container["value"]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or (isinstance(value, float) and not math.isfinite(value))
+        ):
+            issues.append(
+                SchemaIssue(f"$.{name}.value", "must be a finite JSON number")
+            )
+    if raw_value != normalized_value:
+        issues.append(
+            SchemaIssue(
+                "$.normalized_value",
+                "must equal raw_value unless a deterministic conversion run exists",
+            )
+        )
+    if isinstance(raw_value, dict) and set(raw_value) == {"value"}:
+        try:
+            Draft202012Validator(metric_definition).validate(raw_value["value"])
+        except ValidationError as exc:
+            issues.append(SchemaIssue("$.raw_value.value", exc.message))
+    expected_unit = metric_definition.get("x-unit")
+    if isinstance(expected_unit, str):
+        if unit != expected_unit:
+            issues.append(SchemaIssue("$.unit", f"must equal schema unit {expected_unit!r}"))
+    elif metric_definition.get("x-unitless") is True:
+        if unit is not None:
+            issues.append(SchemaIssue("$.unit", "unitless metric must not declare a unit"))
+    else:
+        issues.append(SchemaIssue("$.unit", "numeric schema unit contract is invalid"))
+    if not isinstance(dimensions, dict):
+        issues.append(SchemaIssue("$.dimensions", "must be an object"))
+        return tuple(issues)
+    for key, value in dimensions.items():
+        definition = properties.get(key)
+        if not isinstance(definition, dict) or definition.get("type") not in {
+            "string",
+            "boolean",
+        }:
+            issues.append(
+                SchemaIssue(
+                    f"$.dimensions.{key}",
+                    "dimension is not a string or boolean schema property",
+                )
+            )
+            continue
+        try:
+            Draft202012Validator(definition).validate(value)
+        except ValidationError as exc:
+            issues.append(SchemaIssue(f"$.dimensions.{key}", exc.message))
+    required_dimensions = {
+        key
+        for key in schema.get("required", [])
+        if isinstance(properties.get(key), dict)
+        and properties[key].get("type") in {"string", "boolean"}
+    }
+    missing_dimensions = required_dimensions - set(dimensions)
+    if missing_dimensions:
+        issues.append(
+            SchemaIssue(
+                "$.dimensions",
+                "missing required dimensions: " + ", ".join(sorted(missing_dimensions)),
+            )
+        )
+    return tuple(issues)
 
 
 ALLOWED_UI_DSL_TYPES = frozenset({"stack", "metric", "table", "provenance"})
@@ -87,6 +204,10 @@ def validate_ui_dsl(
     """Validate the non-executable UI subset against the frozen data schema."""
 
     issues: list[SchemaIssue] = []
+    if not isinstance(schema, Mapping):
+        return (SchemaIssue("$.schema", "panel schema must be an object"),)
+    if not isinstance(ui_dsl, Mapping):
+        return (SchemaIssue("$.ui_dsl", "UI DSL root must be an object"),)
     properties = schema.get("properties")
     schema_properties = properties if isinstance(properties, dict) else {}
 

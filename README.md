@@ -3,7 +3,8 @@
 AutoPrism V2 是一个 local-first、证据优先的产业研究面板平台。它把原始
 网页、PDF、CSV/Excel、RSS 与公开 API 保存为不可变历史快照，再按冻结的
 JSON Schema 形成结构化数据。核心数值可以回到原始文件、来源 URL、抓取时间
-和精确定位器，并由代码完成计算与误差检查。
+和精确定位器。确定性代码负责计算与重放；通用单位/货币换算、舍入和误差传播
+仍属于 M7，不会在当前版本中伪装为已完成。
 
 V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终端风格，底层则替换为
 真实数据、版本化契约和可审计证据链。
@@ -24,6 +25,11 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
   提示词版本和模型设置。
 - OpenAI-compatible 与 Google Gemini 的供应商无关模型适配器。
 - 确定性 JSON 映射、Schema 校验、数值核算、交叉验证和审核记录。
+- `evidence-extraction-v3` 冻结抽取输入清单、文本/清单哈希、运行输出位置，
+  并通过规范化关联表保存一条观测的多声明、多证据片段及直接 ExtractionRun 血缘。
+- `numeric-v2-source-artifact-publisher` 验证规则与
+  `trust-eligibility-v3-validation-replay` 可信策略；旧规则、非确定性抽取、
+  过期 peer 和不可重放来源均 fail closed。
 - 证据审计 UI：原始来源、JSON Pointer、抓取时间、文件/文本哈希及原始文件下载。
 - V1 延续型情报驾驶舱：共享 design tokens、角色/视角切换、可信态势图、
   专业面板容器、全证据抽屉以及统一空/错/加载状态。
@@ -70,6 +76,11 @@ AI_MODEL=gpt-4o
 - **legacy_unverified**：V1 遗留数据，保留但默认不进入可信计算与 L2。
 
 错误值不覆盖。修订创建新观察值，并用 `supersedes_id` 指向被替代版本。
+人工修订会保存完整历史，但在当前策略下不能替代可重放的直接抽取证明而晋级可信。
+
+M6 对真实保留数据库先完成备份再升级：6 条历史观测中仅 3 条满足唯一、精确的
+run/output/evidence 匹配并标记为 `backfill_exact`，其余 3 条保持 unresolved；迁移没有
+猜测运行 ID、复制伪证据或改写旧观测。
 
 ## 测试
 
@@ -77,7 +88,9 @@ AI_MODEL=gpt-4o
 # 前端类型检查与生产构建
 cd frontend
 npm ci
+npm run typecheck
 npm run build
+npm audit
 
 # 后端快速测试
 docker compose exec -T web python -m unittest discover -s tests -v
@@ -92,6 +105,11 @@ docker compose exec -T \
 # 迁移漂移检查
 docker compose exec -T web alembic check
 ```
+
+2026-08-09 M6 验证记录：一次性 PostgreSQL 完整后端套件最终 39/39 通过，
+前端 typecheck、production build 与依赖审计通过；空数据库和已填充数据库迁移门禁
+均通过。当前执行环境没有可用 browser runtime，因此本轮新同尺寸截图、控制台与
+桌面/移动视觉交互冒烟尚未完成，不能沿用旧截图冒充本轮结果。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

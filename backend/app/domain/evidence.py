@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 from enum import Enum
 from typing import Any, Mapping
 
@@ -33,6 +34,16 @@ class CalculationResult:
     value: Decimal
     operation: CalculationOperation
     inputs: tuple[Decimal, ...]
+
+
+@dataclass(frozen=True)
+class NormalizedCalculationContract:
+    """Validated calculation inputs and canonical JSON parameters."""
+
+    operation: CalculationOperation
+    inputs: tuple[Decimal, ...]
+    parameters: dict[str, Any]
+    weights: tuple[Decimal, ...] | None
 
 
 @dataclass(frozen=True)
@@ -103,7 +114,107 @@ def _decimal(value: Any) -> Decimal:
     return parsed
 
 
-def execute_calculation(
+def _is_finite_json_number(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or math.isfinite(value)
+
+
+def normalize_calculation_contract(
+    operation: CalculationOperation | str,
+    raw_inputs: list[Any] | tuple[Any, ...],
+    parameters: dict[str, Any] | None = None,
+) -> NormalizedCalculationContract:
+    """Fail closed on every operation/parameter shape before calculation.
+
+    Observation values may be canonical decimal strings, but weights are API
+    parameters and therefore must be finite JSON numbers rather than strings
+    that happen to parse as numbers.
+    """
+
+    try:
+        normalized_operation = CalculationOperation(operation)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"unsupported calculation operation: {operation!r}") from exc
+    if not isinstance(raw_inputs, (list, tuple)):
+        raise ValueError("raw_inputs must be an array")
+    inputs = tuple(_decimal(value) for value in raw_inputs)
+    if not inputs:
+        raise ValueError("at least one input is required")
+    if normalized_operation in {
+        CalculationOperation.SUBTRACT,
+        CalculationOperation.DIVIDE,
+        CalculationOperation.PERCENT_CHANGE,
+    } and len(inputs) != 2:
+        raise ValueError(f"{normalized_operation.value} requires exactly two inputs")
+
+    if parameters is None:
+        raw_parameters: dict[str, Any] = {}
+    elif isinstance(parameters, dict):
+        raw_parameters = dict(parameters)
+    else:
+        raise ValueError("calculation parameters must be an object")
+    if any(not isinstance(key, str) for key in raw_parameters):
+        raise ValueError("calculation parameter keys must be strings")
+
+    allowed_keys = (
+        {"weights"}
+        if normalized_operation is CalculationOperation.WEIGHTED_AVERAGE
+        else {"unit_plan"}
+        if normalized_operation
+        in {CalculationOperation.MULTIPLY, CalculationOperation.DIVIDE}
+        else set()
+    )
+    unknown_keys = sorted(set(raw_parameters) - allowed_keys)
+    if unknown_keys:
+        raise ValueError(
+            "unsupported calculation parameters: " + ", ".join(unknown_keys)
+        )
+
+    normalized_parameters: dict[str, Any] = {}
+    decimal_weights: tuple[Decimal, ...] | None = None
+    if normalized_operation is CalculationOperation.WEIGHTED_AVERAGE:
+        weights = raw_parameters.get("weights")
+        if not isinstance(weights, (list, tuple)):
+            raise ValueError("weighted_average weights must be an array")
+        if len(weights) != len(inputs):
+            raise ValueError("weighted_average requires one weight per input")
+        if any(not _is_finite_json_number(value) for value in weights):
+            raise ValueError(
+                "weighted_average weights must be finite JSON numbers"
+            )
+        decimal_weights = tuple(_decimal(value) for value in weights)
+        try:
+            total_weight = sum(decimal_weights, Decimal("0"))
+        except (DecimalException, OverflowError) as exc:
+            raise ValueError("calculation parameters exceed the supported range") from exc
+        if total_weight == 0:
+            raise ValueError("weight total must not be zero")
+        normalized_parameters["weights"] = list(weights)
+    elif normalized_operation in {
+        CalculationOperation.MULTIPLY,
+        CalculationOperation.DIVIDE,
+    }:
+        unit_plan = raw_parameters.get("unit_plan")
+        if not isinstance(unit_plan, dict) or not unit_plan:
+            raise ValueError(
+                f"{normalized_operation.value} requires a non-empty unit_plan object"
+            )
+        try:
+            canonical_json(unit_plan)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("unit_plan must be a non-empty JSON object") from exc
+        normalized_parameters["unit_plan"] = dict(unit_plan)
+
+    return NormalizedCalculationContract(
+        operation=normalized_operation,
+        inputs=inputs,
+        parameters=normalized_parameters,
+        weights=decimal_weights,
+    )
+
+
+def _execute_calculation(
     operation: CalculationOperation | str,
     raw_inputs: list[Any] | tuple[Any, ...],
     *,
@@ -151,7 +262,35 @@ def execute_calculation(
     return CalculationResult(value=result, operation=op, inputs=inputs)
 
 
-def validate_numeric_sources(
+def execute_calculation(
+    operation: CalculationOperation | str,
+    raw_inputs: list[Any] | tuple[Any, ...],
+    *,
+    parameters: dict[str, Any] | None = None,
+    weights: list[Any] | tuple[Any, ...] | None = None,
+) -> CalculationResult:
+    if parameters is not None and weights is not None:
+        raise ValueError("pass calculation weights through parameters only")
+    if weights is not None:
+        parameters = {"weights": weights}
+    contract = normalize_calculation_contract(operation, raw_inputs, parameters)
+    return execute_normalized_calculation(contract)
+
+
+def execute_normalized_calculation(
+    contract: NormalizedCalculationContract,
+) -> CalculationResult:
+    try:
+        return _execute_calculation(
+            contract.operation,
+            contract.inputs,
+            weights=contract.weights,
+        )
+    except (DecimalException, OverflowError) as exc:
+        raise ValueError("decimal calculation exceeds the supported range") from exc
+
+
+def _validate_numeric_sources(
     raw_values: list[Any] | tuple[Any, ...],
     *,
     absolute_tolerance: Any = 0,
@@ -179,3 +318,19 @@ def validate_numeric_sources(
         spread,
         relative_spread,
     )
+
+
+def validate_numeric_sources(
+    raw_values: list[Any] | tuple[Any, ...],
+    *,
+    absolute_tolerance: Any = 0,
+    relative_tolerance: Any = 0,
+) -> NumericValidationResult:
+    try:
+        return _validate_numeric_sources(
+            raw_values,
+            absolute_tolerance=absolute_tolerance,
+            relative_tolerance=relative_tolerance,
+        )
+    except (DecimalException, OverflowError) as exc:
+        raise ValueError("numeric validation exceeds the supported range") from exc

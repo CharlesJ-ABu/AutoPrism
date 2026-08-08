@@ -126,6 +126,15 @@ class CollectionService:
                     .limit(1)
                 )
             ).scalar_one_or_none()
+            configured_publisher = source.request_config.get(
+                "publisher_identity"
+            )
+            publisher_identity = (
+                configured_publisher.strip().casefold()
+                if isinstance(configured_publisher, str)
+                and configured_publisher.strip()
+                else None
+            )
             snapshot = SourceSnapshot(
                 source_definition_id=source.id,
                 source_key=source.key,
@@ -141,6 +150,7 @@ class CollectionService:
                     "title": parsed.title,
                     "requested_url": result.requested_url,
                     "parser_kind": source.kind.value,
+                    "publisher_identity": publisher_identity,
                 },
                 trust_state=TrustState.UNVERIFIED,
             )

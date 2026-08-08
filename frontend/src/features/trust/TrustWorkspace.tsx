@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BadgeCheck, Calculator, CheckCircle2, GitCompareArrows, History, UserCheck } from 'lucide-react';
 
-import { formatDate } from '../../lib/format';
+import { formatDate, safeHostname } from '../../lib/format';
 import {
   api,
   type CalculationRun,
@@ -14,6 +14,7 @@ import {
   type ValidationRun,
 } from '../../lib/v2-api';
 import { Button, EmptyState, ErrorState, LoadingState, Status } from '../../components/ui';
+import { ObservationLineageTrace } from './ObservationLineage';
 
 type TrustTab = 'observations' | 'calculations' | 'validations' | 'reviews' | 'eligibility';
 
@@ -166,6 +167,7 @@ function ObservationWorkspace({
   const [normalizedValue, setNormalizedValue] = useState('');
   const [reason, setReason] = useState('');
   const [actor, setActor] = useState('');
+  const [evidenceConfirmed, setEvidenceConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -175,6 +177,7 @@ function ObservationWorkspace({
     setNormalizedValue(jsonValue(observation.normalized_value));
     setReason('');
     setActor('');
+    setEvidenceConfirmed(false);
     setError('');
   };
 
@@ -183,11 +186,23 @@ function ObservationWorkspace({
     setSaving(true);
     setError('');
     try {
+      const evidenceClaims = editing.lineage.evidence_refs.reduce<Record<string, string[]>>(
+        (claims, reference) => {
+          const ids = claims[reference.claim_key] ?? [];
+          if (!ids.includes(reference.fragment.fragment_id)) {
+            ids.push(reference.fragment.fragment_id);
+          }
+          claims[reference.claim_key] = ids;
+          return claims;
+        },
+        {},
+      );
       await api.reviseObservation(editing.id, {
         raw_value: JSON.parse(rawValue) as Record<string, unknown>,
         normalized_value: JSON.parse(normalizedValue) as Record<string, unknown>,
         reason,
         revised_by: actor,
+        evidence_claims: evidenceClaims,
       });
       setEditing(null);
       await onChanged();
@@ -219,10 +234,18 @@ function ObservationWorkspace({
           <label>归一化值 JSON<textarea value={normalizedValue} onChange={(event) => setNormalizedValue(event.target.value)} /></label>
           <label>修订原因<input value={reason} onChange={(event) => setReason(event.target.value)} /></label>
           <label>操作者（当前为自我声明，认证尚未接入）<input value={actor} onChange={(event) => setActor(event.target.value)} /></label>
+          <label className="checkbox-line">
+            <input
+              type="checkbox"
+              checked={evidenceConfirmed}
+              onChange={(event) => setEvidenceConfirmed(event.target.checked)}
+            />
+            我已逐项确认当前冻结证据声明支持本次修订；该记录仍保持 UNVERIFIED，当前策略不会自动晋级。
+          </label>
           {error && <p className="form-error">{error}</p>}
           <div className="drawer-actions">
             <Button variant="secondary" onClick={() => setEditing(null)}>取消</Button>
-            <Button disabled={saving || !reason.trim() || !actor.trim()} onClick={() => void submitRevision()}>
+            <Button disabled={saving || !reason.trim() || !actor.trim() || !evidenceConfirmed} onClick={() => void submitRevision()}>
               {saving ? '正在追加…' : '创建替代记录'}
             </Button>
           </div>
@@ -238,21 +261,22 @@ function ObservationWorkspace({
                 <strong>{String(observation.normalized_value.value ?? '未提供')}</strong>
                 <small>{observation.unit ?? '单位未提供'}</small>
               </div>
-              <Status tone={isSuperseded ? 'neutral' : stateTone(observation.trust_state)}>
-                {isSuperseded ? 'SUPERSEDED' : observation.trust_state.toUpperCase()}
-              </Status>
+              <div className="trust-record-statuses">
+                <Status tone={isSuperseded ? 'neutral' : stateTone(observation.trust_state)}>
+                  {isSuperseded ? 'SUPERSEDED' : observation.trust_state.toUpperCase()}
+                </Status>
+              </div>
             </header>
             <dl className="detail-list compact">
               <div><dt>观测 ID</dt><dd className="mono break">{observation.id}</dd></div>
               <div><dt>原始值</dt><dd className="mono break">{jsonValue(observation.raw_value)}</dd></div>
+              <div><dt>归一化值</dt><dd className="mono break">{jsonValue(observation.normalized_value)}</dd></div>
+              <div><dt>单位 / 币种</dt><dd>{observation.unit ?? '单位未提供'} / {observation.currency ?? '币种未提供'}</dd></div>
               <div><dt>维度</dt><dd className="mono break">{jsonValue(observation.dimensions)}</dd></div>
-              <div><dt>定位器</dt><dd className="mono break">{observation.evidence.locator_type} · {jsonValue(observation.evidence.locator)}</dd></div>
-              <div><dt>文件哈希</dt><dd className="mono break">{observation.evidence.artifact_sha256}</dd></div>
-              <div><dt>抽取模型</dt><dd>{observation.extraction_model ?? '确定性映射或未记录'}</dd></div>
               <div><dt>记录时间</dt><dd>{formatDate(observation.created_at)}</dd></div>
             </dl>
+            <ObservationLineageTrace observation={observation} />
             <div className="drawer-actions">
-              <a className="secondary-button" href={observation.evidence.source_url} target="_blank" rel="noreferrer">打开原始来源</a>
               <Button variant="secondary" disabled={isSuperseded} onClick={() => beginRevision(observation)}>
                 {isSuperseded ? '已被替代' : '创建修订'}
               </Button>
@@ -299,7 +323,13 @@ function ObservationSelector({
             )}
           />
           <span>{observation.metric_key} · {String(observation.normalized_value.value ?? '未提供')} {observation.unit ?? ''}</span>
-          <small>{observation.id.slice(0, 8)} · {new URL(observation.evidence.source_url).hostname}</small>
+          <small>
+            {observation.id.slice(0, 8)} · {
+              observation.lineage.evidence_refs[0]
+                ? safeHostname(observation.lineage.evidence_refs[0].fragment.source_url)
+                : '观测级来源未绑定'
+            }
+          </small>
         </label>
       ))}
     </div>
@@ -330,9 +360,31 @@ function CalculationWorkspace({
     try {
       const parameters: Record<string, unknown> = {};
       if (operation === 'weighted_average') {
-        parameters.weights = weights.split(',').map((value) => value.trim()).filter(Boolean);
+        const parsedWeights = weights
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map(Number);
+        if (
+          parsedWeights.length !== selected.length
+          || parsedWeights.some((value) => !Number.isFinite(value))
+        ) {
+          throw new Error('权重必须与输入一一对应，并且都是有限数字');
+        }
+        parameters.weights = parsedWeights;
       }
-      if (operation === 'multiply' || operation === 'divide') parameters.unit_plan = unitPlan;
+      if (operation === 'multiply' || operation === 'divide') {
+        const parsedPlan = JSON.parse(unitPlan) as unknown;
+        if (
+          typeof parsedPlan !== 'object'
+          || parsedPlan === null
+          || Array.isArray(parsedPlan)
+          || Object.keys(parsedPlan).length === 0
+        ) {
+          throw new Error('单位计划必须是非空 JSON 对象');
+        }
+        parameters.unit_plan = parsedPlan;
+      }
       await api.calculate({
         operation,
         input_observation_ids: selected,
@@ -364,7 +416,7 @@ function CalculationWorkspace({
         <label>输出指标键<input value={metricKey} onChange={(event) => setMetricKey(event.target.value)} /></label>
         <label>输出单位（必须显式）<input value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
         {operation === 'weighted_average' && <label>权重（按输入顺序，逗号分隔）<input value={weights} onChange={(event) => setWeights(event.target.value)} /></label>}
-        {(operation === 'multiply' || operation === 'divide') && <label>单位计划<input value={unitPlan} onChange={(event) => setUnitPlan(event.target.value)} /></label>}
+        {(operation === 'multiply' || operation === 'divide') && <label>单位计划 JSON<textarea value={unitPlan} onChange={(event) => setUnitPlan(event.target.value)} placeholder='{"operation":"vehicle_per_day"}' /></label>}
         {error && <p className="form-error">{error}</p>}
         <Button disabled={saving || !selected.length || !metricKey.trim() || !unit.trim()} onClick={() => void submit()}>
           {saving ? '正在执行…' : '执行并冻结计算运行'}

@@ -1,6 +1,6 @@
 # AutoPrism V1 → V2 Gap and Acceptance Matrix
 
-Audit date: 2026-07-27 (Asia/Shanghai)
+Current review date: 2026-08-09 (Asia/Shanghai)
 
 This document is the working acceptance ledger for the `v2` branch. `main`
 remains the frozen, unauthenticated V1 local edition and is used only as a
@@ -8,7 +8,10 @@ read-only comparison source.
 
 ## Audited baseline
 
-| Area | V1 evidence | V2 evidence at `85a4597` | Conclusion |
+The table below is the historical pre-M1 snapshot recorded on 2026-07-27. It is
+retained to show the original gap and must not be read as current M6 status.
+
+| Area | V1 evidence | Historical V2 evidence at `85a4597` | Historical conclusion |
 |---|---|---|---|
 | Product identity | Fixed top cockpit navigation, role switcher, globe/tactical map, dense four-column specialist panels, purple/cyan glass system | Purple/cyan palette and evidence terminal restored, but layout is a left-nav administration shell with no role switcher or situation map | Partial; V2 does not yet read as an unmistakable V1 upgrade |
 | Frontend structure | Many specialized map/panel components, but tightly coupled to prototype stores and `/api/v1` | `App.tsx` contains application state, shell, panel rendering, evidence drawer and composer in one 387-line file | Fails component-system acceptance |
@@ -21,7 +24,23 @@ read-only comparison source.
 | L2 | Prototype endpoint and unverified model output | Contract says stored eligible data only | Service/UI not implemented; must remain an explicit unavailable state |
 | Compliance | Prototype crawler has no complete policy boundary | authorization/robots/terms/rate-limit preflight and human-action blocking | Core backend present; authenticated browser collection and credential vault intentionally unavailable |
 | Tests | V1 build and crawler gaps are documented | 23 backend tests, migration checks, frontend build, Compose and browser record dated 2026-07-25 | Historical evidence only until re-run in the current worktree |
-| Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Strong foundation; UI DSL, trust contract and current release checklist need dedicated documents |
+| Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Historical gap; dedicated Schema/UI DSL, trust, testing and release documents now exist |
+
+### M6 current delta
+
+- The V1-continuity cockpit and split component system remain implemented.
+- `evidence-extraction-v3` now freezes exact ordered extraction inputs.
+- Normalized observation evidence sets support multiple claims and fragments;
+  direct observations use exact run/record/field associations.
+- `numeric-v2-source-artifact-publisher` and
+  `trust-eligibility-v3-validation-replay` replace the earlier source-only and
+  v1-era policy descriptions.
+- Fresh and backed-up populated migration gates passed. The real six-observation
+  audit produced 3 exact links and 3 unresolved without guessed backfill.
+- The final disposable-PostgreSQL backend suite passed 39/39 and frontend
+  typecheck/build/dependency audit passed.
+- The current environment has no browser runtime, so new M6 V1/V2 screenshots,
+  console, responsive and visual/interaction smoke remain pending.
 
 ## Non-negotiable trust findings
 
@@ -47,6 +66,8 @@ read-only comparison source.
 | M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser source/compliance/job/action smoke | Complete |
 | M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Complete for current trust contract; eligibility/L2 remains M5 |
 | M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Complete |
+| M6 Exact lineage and trust replay | v3 input manifest, normalized claim evidence, exact origins, three-axis validation and dynamic peer replay | `0005`, fresh/populated gates, 6/3/3 audit, 39/39 backend and frontend static gates; browser visual gate not executed | Implementation/data/static complete; visual release gate pending |
+| M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Not started |
 
 ## Feature acceptance ledger
 
@@ -65,17 +86,17 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
 | Evidence viewing | all fragments plus INFO provenance | connected cockpit drawer | done | done |
 | Revision history | append-only with DB fork prevention | view and create replacement | done | done |
-| Cross-source validation | explicit tolerances and independent-source rule | view and run | done | done |
+| Cross-source validation | explicit tolerances plus independent source/artifact/frozen-publisher rule | view and run | done | done |
 | Human review | append-only single-head decisions | queue and superseding decisions | done | done; actor identity remains deferred |
-| L1 → INFO lineage | done for reference panels | complete current trace | done | partial until direct extraction-run FK |
-| Deterministic calculations | scoped Decimal engine and replay records | view and run plans | done | done for supported operations |
+| L1 → INFO lineage | normalized claim evidence plus exact extraction association for new v3 rows | complete trace; unresolved history is explicit | done | done for v3; 3 historical rows intentionally unresolved |
+| Deterministic calculations | scoped Decimal engine and replay records | view and run plans | done | operational/replayable but not trust eligible until M7 |
 | Unit conversion registry | missing | missing | missing | missing |
 | L2 stored-data-only analysis | normalized eligible inputs and immutable hash | connected with explicit unavailable state | done | done for deterministic evidence summary |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |
 | Encrypted credential vault | SaaS-only deferred | explicit TODO required | missing | deferred |
 | Isolated custom React runtime | source storage only | explicit TODO required | hash test only | deferred |
 
-## Baseline observations requiring correction
+## Historical baseline findings and resolution
 
 1. The existing Compose project was still serving the V1 frontend image when
    first inspected from this worktree. Runtime validation must always rebuild
@@ -83,17 +104,17 @@ has a real path with missing required behavior; **missing** has no usable path;
    baseline was captured only after an exact-source rebuild.
 2. The V1 baseline visibly contains `NA` and values without reproducible
    evidence. Those screenshots are visual references only, never data fixtures.
-3. The current V2 audit strip counts panels with evidence, not evidence items,
-   and labels all results as an “完整证据链”. This overstates trust and must be
-   replaced with precise states.
-4. The composer label “保存冻结版本” sends `state: draft`. UI wording and the
-   persisted state conflict and must be separated into draft save versus
-   explicit frozen publication.
+3. The original V2 audit strip counted panels with evidence, not evidence
+   items, and labeled all results as an “完整证据链”. M1 replaced this with
+   precise Schema/provenance states.
+4. The original composer label “保存冻结版本” sent `state: draft`. M2 separated
+   draft save from explicit acknowledged frozen publication.
 5. The original V2 drawer exposed only the first fragment. M1 expanded it to
    every returned fragment and M4 added field observations, revision chains,
-   calculation runs, validation runs and review decisions. A direct
-   observation-to-extraction-run foreign key and multi-fragment observation
-   relation remain explicit data-model work.
+   calculation runs, validation runs and review decisions. M6 added normalized
+   multi-claim evidence and exact observation-to-extraction associations. Three
+   historical observations remain unresolved because no unique exact match
+   exists; this is an explicit truthful state, not pending guessed backfill.
 
 ## M1 verification record
 
@@ -198,3 +219,30 @@ has a real path with missing required behavior; **missing** has no usable path;
   written during browser smoke.
 - Legacy `reset.py` and `reset_l2.py` now refuse destructive resets and direct
   operators to Alembic plus disposable test databases.
+
+## M6 verification record
+
+- Added migration `0005_v2_observation_lineage`, normalized observation evidence
+  sets/links, exact extraction associations and `evidence-extraction-v3` frozen
+  input manifests.
+- Database constraints reject incomplete evidence cardinality, multiple stored
+  origins, inconsistent revision pairs and UPDATE/DELETE/TRUNCATE of immutable
+  history. Trust eligibility separately requires exactly one replayable origin.
+- Validation now freezes and replays independent source-definition, artifact
+  and snapshot publisher identities under
+  `numeric-v2-source-artifact-publisher`.
+- Trust assessments use `trust-eligibility-v3-validation-replay`; every peer is
+  dynamically rechecked for current-head, evidence, artifact/locator and origin
+  integrity. Old rules and stale peers cannot power `trusted_only` or L2.
+- The real PostgreSQL database was backed up before non-destructive upgrade.
+  All six target observations remain: 3 unique `backfill_exact`, 3 unresolved,
+  with `exact_output_match_only` audit and no guessed run assignment.
+- A fresh database upgraded through the entire graph and passed drift checks.
+  The final full disposable-PostgreSQL backend suite passed 39/39; frontend
+  typecheck, production build and dependency audit passed.
+- Current M6 browser verification is **not complete**. No browser runtime is
+  available in this environment, so new same-size desktop screenshots,
+  390×844 responsive checks, console inspection and visual/interaction smoke
+  remain release blockers. M1–M5 screenshots remain historical only.
+- General unit/currency/time conversion, precision/rounding, error propagation
+  and trusted calculation-engine enablement remain M7.

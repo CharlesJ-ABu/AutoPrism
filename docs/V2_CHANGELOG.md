@@ -5,6 +5,48 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M6 — Exact observation lineage and fail-closed trust replay (2026-08-09)
+
+- Added migration `0005_v2_observation_lineage` with normalized
+  `ObservationEvidenceSet`/`ObservationEvidenceLink` claims and exact
+  `ObservationExtractionLink` run, record ordinal and field-path origins.
+- Added `evidence-extraction-v3`. Every new run freezes an ordered
+  `ExtractionRunInputSet`/`ExtractionRunInput` manifest, text and entry hashes,
+  manifest count/hash and complete input payload hash in the same transaction.
+- Added deferred database constraints for evidence cardinality, contiguous
+  ordinals, complete metric/dimension claims, extraction-output agreement,
+  revision consistency and at most one stored extraction/revision/calculation
+  origin. Current Trust separately requires exactly one replayable origin.
+  Immutable history now rejects UPDATE, DELETE and TRUNCATE.
+- Made migration backfill exact-only. The backed-up populated database retained
+  all six target observations: three unique matches became `backfill_exact` and
+  three stayed unresolved. The audit records `exact_output_match_only`; no run,
+  value or evidence was guessed or rewritten.
+- Added `numeric-v2-source-artifact-publisher` validation with independent
+  source-definition, artifact and snapshot-frozen publisher identities.
+  Validation replay recomputes comparison key, rule result/state and every
+  peer's current-head/evidence/origin integrity.
+- Added `trust-eligibility-v3-validation-replay` and dynamic current semantics
+  for assessment APIs, `trusted_only` observations and L2. Old rules and stale
+  peers fail closed.
+- Limited trusted extraction authority to exact deterministic v3 replay.
+  Non-deterministic model output remains an explicit unverified candidate;
+  manual revisions and Decimal calculations also remain ineligible until their
+  future attestation/unit/error contracts exist.
+- Hardened malformed historical JSON, boolean Schema, NaN/Infinity,
+  calculation parameter, revision scope, citation and snapshot-state paths so
+  they return explicit ineligible/422 outcomes instead of becoming trusted or
+  raising unhandled errors.
+- Passed both fresh and populated migration gates. The final disposable
+  PostgreSQL backend suite passed 39/39; frontend typecheck, production build
+  and dependency audit passed with zero reported vulnerabilities.
+- Browser runtime was unavailable in the current environment. New M6 same-size
+  V1/V2 screenshots, responsive/console inspection and visual interaction smoke
+  remain an explicit release-closeout gate; older screenshots were not reused
+  as current evidence.
+- Deferred general unit/currency/time conversion, rounding and error
+  propagation, and trusted calculation-engine enablement to M7.
+
 ### M1 — Intelligence cockpit foundation
 
 - Added a read-only V1/V2 gap and acceptance ledger.

@@ -9,7 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.providers import ModelConfig, create_provider
+from app.ai.providers import (
+    ModelConfig,
+    create_provider,
+    validate_deterministic_mapping,
+)
 from app.core.config import settings
 from app.core.database import get_db
 from app.domain.evidence import sha256_bytes
@@ -158,6 +162,14 @@ async def create_dashboard_version(
                 status_code=422,
                 detail=f"custom React panel {panel.key} requires component_code",
             )
+        if panel.model_settings.get("extraction_engine") == "json_mapping_v1":
+            try:
+                validate_deterministic_mapping(panel.model_settings)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"invalid deterministic mapping for {panel.key}: {exc}",
+                ) from exc
 
     next_version = (
         await db.scalar(
@@ -323,54 +335,98 @@ async def get_dashboard_view(
         evidence = []
         snapshot = None
         if run is not None:
-            records = run.output.get("records", [])
-            if records:
+            records = (
+                run.output.get("records", [])
+                if isinstance(run.output, dict)
+                else []
+            )
+            run_validation = (
+                run.validation if isinstance(run.validation, dict) else {}
+            )
+            if (
+                run_validation.get("valid") is True
+                and isinstance(records, list)
+                and records
+                and isinstance(records[0], dict)
+                and isinstance(records[0].get("data"), dict)
+            ):
                 data = records[0].get("data")
-                fragment_ids = {
-                    uuid.UUID(fragment_id)
-                    for record in records
-                    for fragment_id in record.get("evidence", {}).values()
-                }
-                if fragment_ids:
-                    evidence_rows = (
-                        await db.execute(
-                            select(
-                                EvidenceFragment,
-                                SourceSnapshot,
-                                EvidenceArtifact,
-                            )
-                            .join(
-                                SourceSnapshot,
-                                EvidenceFragment.snapshot_id == SourceSnapshot.id,
-                            )
-                            .join(
-                                EvidenceArtifact,
-                                SourceSnapshot.artifact_id == EvidenceArtifact.id,
-                            )
-                            .where(EvidenceFragment.id.in_(fragment_ids))
+            fragment_ids: set[uuid.UUID] = set()
+            if isinstance(records, list):
+                for record in records:
+                    evidence_map = (
+                        record.get("evidence")
+                        if isinstance(record, dict)
+                        else None
+                    )
+                    if not isinstance(evidence_map, dict):
+                        continue
+                    for citation in evidence_map.values():
+                        values = (
+                            [citation]
+                            if isinstance(citation, str)
+                            else citation
+                            if isinstance(citation, list)
+                            else []
                         )
-                    ).all()
-                    for fragment, source_snapshot, artifact in evidence_rows:
-                        snapshot = source_snapshot
-                        evidence.append(
-                            {
-                                "fragment_id": str(fragment.id),
-                                "locator_type": fragment.locator_type,
-                                "locator": fragment.locator,
-                                "text_sha256": fragment.extracted_text_sha256,
-                                "source_url": source_snapshot.canonical_url,
-                                "retrieved_at": source_snapshot.retrieved_at,
-                                "published_at": source_snapshot.published_at,
-                                "artifact_id": str(artifact.id),
-                                "artifact_sha256": artifact.sha256,
-                                "artifact_byte_size": artifact.byte_size,
-                                "artifact_media_type": artifact.media_type,
-                            }
+                        for fragment_id in values:
+                            if not isinstance(fragment_id, str):
+                                continue
+                            try:
+                                fragment_ids.add(uuid.UUID(fragment_id))
+                            except ValueError:
+                                continue
+            if fragment_ids:
+                evidence_rows = (
+                    await db.execute(
+                        select(
+                            EvidenceFragment,
+                            SourceSnapshot,
+                            EvidenceArtifact,
                         )
+                        .join(
+                            SourceSnapshot,
+                            EvidenceFragment.snapshot_id == SourceSnapshot.id,
+                        )
+                        .join(
+                            EvidenceArtifact,
+                            SourceSnapshot.artifact_id == EvidenceArtifact.id,
+                        )
+                        .where(
+                            EvidenceFragment.id.in_(fragment_ids),
+                            EvidenceFragment.snapshot_id == run.snapshot_id,
+                        )
+                    )
+                ).all()
+                for fragment, source_snapshot, artifact in evidence_rows:
+                    snapshot = source_snapshot
+                    evidence.append(
+                        {
+                            "fragment_id": str(fragment.id),
+                            "locator_type": fragment.locator_type,
+                            "locator": fragment.locator,
+                            "text_sha256": fragment.extracted_text_sha256,
+                            "source_url": source_snapshot.canonical_url,
+                            "retrieved_at": source_snapshot.retrieved_at,
+                            "published_at": source_snapshot.published_at,
+                            "artifact_id": str(artifact.id),
+                            "artifact_sha256": artifact.sha256,
+                            "artifact_byte_size": artifact.byte_size,
+                            "artifact_media_type": artifact.media_type,
+                        }
+                    )
         panels.append(
             {
                 **_panel_version_dict(panel, key),
                 "data": data,
+                "data_state": (
+                    "not_run"
+                    if run is None
+                    else "unverified"
+                    if isinstance(run.validation, dict)
+                    and run.validation.get("valid") is True
+                    else "invalid"
+                ),
                 "extraction": (
                     {
                         "id": str(run.id),

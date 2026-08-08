@@ -12,6 +12,7 @@ from app.models.evidence import (
     MetricObservation,
     TrustAssessment,
 )
+from app.services.trust_service import TRUST_POLICY_VERSION, TrustService
 
 
 L2_ENGINE_VERSION = "deterministic-stored-summary-v1"
@@ -27,6 +28,7 @@ class InsightService:
             raise ValueError("observation_ids must not contain duplicates")
         observations: list[MetricObservation] = []
         assessments: list[TrustAssessment] = []
+        trust_service = TrustService(self.db)
         for observation_id in observation_ids:
             observation = await self.db.get(MetricObservation, observation_id)
             if observation is None:
@@ -48,7 +50,10 @@ class InsightService:
                     .limit(1)
                 )
             ).scalar_one_or_none()
-            if assessment is None or not assessment.eligible:
+            if (
+                assessment is None
+                or not await trust_service.is_assessment_current(assessment)
+            ):
                 raise ValueError(
                     f"observation lacks a current eligible trust assessment: {observation.id}"
                 )
@@ -63,8 +68,21 @@ class InsightService:
                 "normalized_value": observation.normalized_value,
                 "unit": observation.unit,
                 "currency": observation.currency,
-                "period_start": observation.period_start,
-                "period_end": observation.period_end,
+                "observed_at": (
+                    observation.observed_at.isoformat(timespec="microseconds")
+                    if observation.observed_at is not None
+                    else None
+                ),
+                "period_start": (
+                    observation.period_start.isoformat(timespec="microseconds")
+                    if observation.period_start is not None
+                    else None
+                ),
+                "period_end": (
+                    observation.period_end.isoformat(timespec="microseconds")
+                    if observation.period_end is not None
+                    else None
+                ),
                 "geographic_scope": observation.geographic_scope,
                 "dimensions": observation.dimensions,
             }
@@ -89,7 +107,8 @@ class InsightService:
         output = {
             "summary": (
                 f"本摘要仅使用 {len(observations)} 条已通过 "
-                "trust-eligibility-v1 的数据库观测；未浏览、补值或执行模型数学。"
+                f"{TRUST_POLICY_VERSION} 的数据库观测；"
+                "未浏览、补值或执行模型数学。"
             ),
             "items": input_snapshot,
             "limitations": [

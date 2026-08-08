@@ -249,6 +249,7 @@ async def seed(*, collect: bool) -> dict:
                     request_config={
                         "timeout_seconds": 60,
                         "max_bytes": 25 * 1024 * 1024,
+                        "publisher_identity": "nhtsa",
                     },
                     parser_config={},
                 )

@@ -4,19 +4,32 @@ import unittest
 import uuid
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 
-from app.ai.providers import StructuredModelResponse
+from app.ai.providers import DeterministicMappingProvider, StructuredModelResponse
 from app.acquisition.contracts import FetchRequest, FetchResult
 from app.core.database import async_engine, async_session_maker
+from app.core.config import settings
 from app.main import app
-from app.models.evidence import EvidenceArtifact, EvidenceFragment, SourceSnapshot
+from app.domain.evidence import sha256_bytes
+from app.models.evidence import (
+    EvidenceArtifact,
+    EvidenceFragment,
+    ObservationEvidenceLink,
+    ObservationEvidenceSet,
+    ObservationExtractionLink,
+    SourceSnapshot,
+    ValidationRun,
+    VerificationState,
+)
 from app.models.dashboards import (
     Dashboard,
     DashboardVersion,
+    ExtractionRun,
     PanelDefinition,
     PanelVersion,
     TemplateKind,
@@ -38,18 +51,19 @@ from app.services.verification_service import VerificationService
 
 
 class FakeFetcher:
-    def __init__(self, content: bytes):
+    def __init__(self, content: bytes, media_type: str = "text/html"):
         self.content = content
+        self.media_type = media_type
 
     async def fetch(self, request: FetchRequest) -> FetchResult:
         return FetchResult(
             requested_url=request.url,
             final_url=request.url,
             status_code=200,
-            headers={"content-type": "text/html"},
+            headers={"content-type": self.media_type},
             content=self.content,
             retrieved_at=datetime(2026, 7, 25, 0, 0, 0),
-            media_type="text/html",
+            media_type=self.media_type,
         )
 
 
@@ -95,6 +109,7 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     kind=SourceKind.HTML,
                     global_reputation=1,
                     topic_authority=1,
+                    request_config={"publisher_identity": "example-official"},
                 )
                 db.add(source)
                 await db.flush()
@@ -154,6 +169,93 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await db.commit()
             await db.rollback()
 
+    async def test_database_rejects_append_only_truncate(self):
+        async with async_session_maker() as db:
+            with self.assertRaises(DBAPIError):
+                await db.execute(text("TRUNCATE TABLE lineage_backfill_audits"))
+                await db.commit()
+            await db.rollback()
+
+    async def test_database_rejects_late_evidence_insert(self):
+        suffix = uuid.uuid4().hex
+        async with async_session_maker() as db:
+            artifact = EvidenceArtifact(
+                sha256=suffix * 2,
+                byte_size=1,
+                media_type="text/plain",
+                storage_uri=f"file:///tmp/{suffix}",
+            )
+            db.add(artifact)
+            await db.flush()
+            snapshot = SourceSnapshot(
+                source_key=f"frozen-evidence-{suffix}",
+                canonical_url=f"https://example.test/{suffix}",
+                artifact_id=artifact.id,
+                retrieved_at=datetime(2026, 8, 8, 0, 0, 0),
+            )
+            db.add(snapshot)
+            await db.flush()
+            primary = EvidenceFragment(
+                snapshot_id=snapshot.id,
+                locator_type="text_range",
+                locator={"start": 0, "end": 1},
+                extracted_text="1",
+                extracted_text_sha256=sha256_bytes(b"1"),
+            )
+            late = EvidenceFragment(
+                snapshot_id=snapshot.id,
+                locator_type="text_range",
+                locator={"start": 2, "end": 3},
+                extracted_text="2",
+                extracted_text_sha256=sha256_bytes(b"2"),
+            )
+            db.add_all([primary, late])
+            await db.flush()
+            observation = MetricObservation(
+                panel_version_key=f"manual-{suffix}",
+                schema_version="1",
+                metric_key="value",
+                evidence_fragment_id=primary.id,
+                raw_value={"value": 1},
+                normalized_value={"value": 1},
+                geographic_scope={},
+                dimensions={},
+            )
+            db.add(observation)
+            await db.flush()
+            db.add(
+                ObservationEvidenceSet(
+                    observation_id=observation.id,
+                    citation_count=1,
+                )
+            )
+            await db.flush()
+            db.add(
+                ObservationEvidenceLink(
+                    observation_id=observation.id,
+                    ordinal=0,
+                    evidence_fragment_id=primary.id,
+                    role="primary",
+                    claim_key="value",
+                    field_path="$.value",
+                )
+            )
+            await db.commit()
+
+            db.add(
+                ObservationEvidenceLink(
+                    observation_id=observation.id,
+                    ordinal=1,
+                    evidence_fragment_id=late.id,
+                    role="supporting",
+                    claim_key="value",
+                    field_path="$.value",
+                )
+            )
+            with self.assertRaises(DBAPIError):
+                await db.commit()
+            await db.rollback()
+
     async def test_missing_user_credentials_creates_human_action(self):
         suffix = uuid.uuid4().hex
         async with async_session_maker() as db:
@@ -196,7 +298,14 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_schema_bound_extraction_creates_cited_metric(self):
         suffix = uuid.uuid4().hex
-        with tempfile.TemporaryDirectory() as temporary_directory:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            patch.object(
+                settings,
+                "ARTIFACT_STORAGE_PATH",
+                temporary_directory,
+            ),
+        ):
             async with async_session_maker() as db:
                 pool = SourcePool(
                     key=f"extract-{suffix}",
@@ -223,9 +332,10 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     key="official",
                     name="Official",
                     canonical_url="https://example.test/report",
-                    kind=SourceKind.HTML,
+                    kind=SourceKind.API,
                     global_reputation=1,
                     topic_authority=1,
+                    request_config={"publisher_identity": "example-official"},
                 )
                 db.add_all([dashboard_version, panel, source])
                 await db.flush()
@@ -256,6 +366,13 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     ui_dsl={"type": "bar"},
                     visualization_contract={"type": "bar"},
                     extraction_prompt="Extract reported sales.",
+                    model_settings={
+                        "extraction_engine": "json_mapping_v1",
+                        "field_mappings": {
+                            "brand": "brand",
+                            "sales": "sales",
+                        },
+                    },
                     source_pool_id=pool.id,
                 )
                 db.add(panel_version)
@@ -269,23 +386,64 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 collected = await CollectionService(
                     db,
                     fetcher=FakeFetcher(
-                        b"<html><body><p id='sales'>BYD sold 42 vehicles</p></body></html>"
+                        b'{"brand":"BYD","sales":42}',
+                        "application/json",
                     ),
                     artifact_store=LocalArtifactStore(Path(temporary_directory)),
                 ).run_job(job.id)
-                fragment = (
+                captured_fragments = (
                     await db.execute(
                         select(EvidenceFragment).where(
                             EvidenceFragment.snapshot_id
                             == collected.result_snapshot_id
                         )
                     )
-                ).scalar_one()
+                ).scalars().all()
+                self.assertEqual(len(captured_fragments), 1)
+                fragment = captured_fragments[0]
                 original_snapshot = await db.get(
                     SourceSnapshot,
                     collected.result_snapshot_id,
                 )
                 extracted = await ExtractionService(
+                    db,
+                    DeterministicMappingProvider(panel_version.model_settings),
+                ).extract(
+                    panel_version_id=panel_version.id,
+                    snapshot_id=collected.result_snapshot_id,
+                )
+                self.assertEqual(extracted.issues, ())
+                self.assertEqual(len(extracted.observation_ids), 1)
+                observation = await db.get(
+                    MetricObservation,
+                    extracted.observation_ids[0],
+                )
+                self.assertEqual(observation.normalized_value, {"value": 42})
+                self.assertEqual(observation.unit, "vehicle")
+                evidence_set = await db.get(ObservationEvidenceSet, observation.id)
+                self.assertEqual(evidence_set.citation_count, 2)
+                observation_links = (
+                    await db.execute(
+                        select(ObservationEvidenceLink)
+                        .where(ObservationEvidenceLink.observation_id == observation.id)
+                        .order_by(ObservationEvidenceLink.ordinal)
+                    )
+                ).scalars().all()
+                self.assertEqual(
+                    [item.evidence_fragment_id for item in observation_links],
+                    [fragment.id, fragment.id],
+                )
+                self.assertEqual(
+                    [item.claim_key for item in observation_links],
+                    ["sales", "brand"],
+                )
+                extraction_link = await db.get(
+                    ObservationExtractionLink,
+                    observation.id,
+                )
+                self.assertEqual(extraction_link.extraction_run_id, extracted.run_id)
+                self.assertEqual(extraction_link.output_record_ordinal, 0)
+                nondeterministic_extracted = await ExtractionService(
                     db,
                     FakeProvider(
                         {
@@ -304,52 +462,74 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     panel_version_id=panel_version.id,
                     snapshot_id=collected.result_snapshot_id,
                 )
-                self.assertEqual(extracted.issues, ())
-                self.assertEqual(len(extracted.observation_ids), 1)
-                observation = await db.get(
-                    MetricObservation,
-                    extracted.observation_ids[0],
+                nondeterministic_assessment = await TrustService(
+                    db,
+                    artifact_store=LocalArtifactStore(Path(temporary_directory)),
+                ).assess(
+                    observation_id=nondeterministic_extracted.observation_ids[0],
+                    validation_run_id=None,
                 )
-                self.assertEqual(observation.normalized_value, {"value": 42})
-                self.assertEqual(observation.unit, "vehicle")
+                self.assertFalse(nondeterministic_assessment.eligible)
+                self.assertIn(
+                    "DETERMINISTIC_EXTRACTION_REPLAY_FAILED",
+                    nondeterministic_assessment.reason_codes,
+                )
                 independent_source = SourceDefinition(
                     pool_id=pool.id,
                     key=f"independent-{suffix}",
                     name="Independent official source",
                     canonical_url="https://independent.example.test/report",
-                    kind=SourceKind.HTML,
+                    kind=SourceKind.API,
                     global_reputation=1,
                     topic_authority=1,
+                    request_config={
+                        "publisher_identity": "independent-official"
+                    },
                 )
                 db.add(independent_source)
                 await db.flush()
-                independent_snapshot = SourceSnapshot(
+                independent_job = CollectionJob(
                     source_definition_id=independent_source.id,
-                    source_key=independent_source.key,
-                    canonical_url=independent_source.canonical_url,
-                    artifact_id=original_snapshot.artifact_id,
-                    retrieved_at=datetime(2026, 7, 25, 0, 1, 0),
+                    idempotency_key=f"independent:{suffix}",
                 )
-                db.add(independent_snapshot)
-                await db.flush()
-                independent_fragment = EvidenceFragment(
-                    snapshot_id=independent_snapshot.id,
-                    locator_type="css_selector",
-                    locator={"selector": "#reported-sales"},
-                    extracted_text="Independent filing reports 43 vehicles",
+                db.add(independent_job)
+                await db.commit()
+                independent_collected = await CollectionService(
+                    db,
+                    fetcher=FakeFetcher(
+                        b'{"brand":"BYD","sales":43}',
+                        "application/json",
+                    ),
+                    artifact_store=LocalArtifactStore(Path(temporary_directory)),
+                ).run_job(independent_job.id)
+                independent_snapshot = await db.get(
+                    SourceSnapshot,
+                    independent_collected.result_snapshot_id,
                 )
-                db.add(independent_fragment)
-                await db.flush()
-                second = MetricObservation(
-                    panel_version_key=observation.panel_version_key,
-                    schema_version=observation.schema_version,
-                    metric_key=observation.metric_key,
-                    evidence_fragment_id=independent_fragment.id,
-                    raw_value={"value": 43},
-                    normalized_value={"value": 43},
-                    unit="vehicle",
-                    dimensions=observation.dimensions,
-                    geographic_scope={},
+                independent_artifact = await db.get(
+                    EvidenceArtifact,
+                    independent_snapshot.artifact_id,
+                )
+                independent_fragments = (
+                    await db.execute(
+                        select(EvidenceFragment).where(
+                            EvidenceFragment.snapshot_id
+                            == independent_collected.result_snapshot_id
+                        )
+                    )
+                ).scalars().all()
+                self.assertEqual(len(independent_fragments), 1)
+                independent_fragment = independent_fragments[0]
+                independent_extracted = await ExtractionService(
+                    db,
+                    DeterministicMappingProvider(panel_version.model_settings),
+                ).extract(
+                    panel_version_id=panel_version.id,
+                    snapshot_id=independent_collected.result_snapshot_id,
+                )
+                second = await db.get(
+                    MetricObservation,
+                    independent_extracted.observation_ids[0],
                 )
                 same_source = MetricObservation(
                     panel_version_key=observation.panel_version_key,
@@ -362,8 +542,93 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     dimensions=observation.dimensions,
                     geographic_scope={},
                 )
-                db.add(second)
+                mixed_source = MetricObservation(
+                    panel_version_key=observation.panel_version_key,
+                    schema_version=observation.schema_version,
+                    metric_key=observation.metric_key,
+                    evidence_fragment_id=observation.evidence_fragment_id,
+                    raw_value={"value": 42},
+                    normalized_value={"value": 42},
+                    unit="vehicle",
+                    dimensions=observation.dimensions,
+                    geographic_scope={},
+                )
+                originless_peer = MetricObservation(
+                    panel_version_key=observation.panel_version_key,
+                    schema_version=observation.schema_version,
+                    metric_key=observation.metric_key,
+                    evidence_fragment_id=independent_fragment.id,
+                    raw_value={"value": 43},
+                    normalized_value={"value": 43},
+                    unit="vehicle",
+                    dimensions=observation.dimensions,
+                    geographic_scope={},
+                )
                 db.add(same_source)
+                db.add(mixed_source)
+                db.add(originless_peer)
+                await db.flush()
+                db.add_all(
+                    [
+                        ObservationEvidenceSet(
+                            observation_id=same_source.id,
+                            citation_count=1,
+                        ),
+                        ObservationEvidenceSet(
+                            observation_id=mixed_source.id,
+                            citation_count=2,
+                        ),
+                        ObservationEvidenceSet(
+                            observation_id=originless_peer.id,
+                            citation_count=2,
+                        ),
+                    ]
+                )
+                await db.flush()
+                db.add_all(
+                    [
+                        ObservationEvidenceLink(
+                            observation_id=mixed_source.id,
+                            ordinal=0,
+                            evidence_fragment_id=observation.evidence_fragment_id,
+                            role="primary",
+                            claim_key="sales",
+                            field_path="$.sales",
+                        ),
+                        ObservationEvidenceLink(
+                            observation_id=mixed_source.id,
+                            ordinal=1,
+                            evidence_fragment_id=independent_fragment.id,
+                            role="supporting",
+                            claim_key="sales",
+                            field_path="$.sales",
+                        ),
+                        ObservationEvidenceLink(
+                            observation_id=same_source.id,
+                            ordinal=0,
+                            evidence_fragment_id=observation.evidence_fragment_id,
+                            role="primary",
+                            claim_key="sales",
+                            field_path="$.sales",
+                        ),
+                        ObservationEvidenceLink(
+                            observation_id=originless_peer.id,
+                            ordinal=0,
+                            evidence_fragment_id=independent_fragment.id,
+                            role="primary",
+                            claim_key="sales",
+                            field_path="$.sales",
+                        ),
+                        ObservationEvidenceLink(
+                            observation_id=originless_peer.id,
+                            ordinal=1,
+                            evidence_fragment_id=independent_fragment.id,
+                            role="dimension",
+                            claim_key="brand",
+                            field_path="$.brand",
+                        ),
+                    ]
+                )
                 await db.commit()
                 same_source_validation, same_source_review = (
                     await VerificationService(db).validate_observations(
@@ -377,6 +642,21 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     "needs_review",
                 )
                 self.assertIsNotNone(same_source_review)
+                mixed_source_validation, mixed_source_review = (
+                    await VerificationService(db).validate_observations(
+                        [mixed_source.id, second.id],
+                        absolute_tolerance=2,
+                        relative_tolerance=0,
+                    )
+                )
+                self.assertEqual(
+                    mixed_source_validation.state.value,
+                    "needs_review",
+                )
+                self.assertIn(
+                    "AMBIGUOUS_OBSERVATION_EVIDENCE_SCOPE",
+                    mixed_source_review.reason_codes,
+                )
                 validation, review = await VerificationService(
                     db
                 ).validate_observations(
@@ -435,6 +715,43 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(observations_response.status_code, 200)
                     self.assertGreaterEqual(len(observations_response.json()), 3)
+                    direct_observation = next(
+                        item
+                        for item in observations_response.json()
+                        if item["id"] == str(observation.id)
+                    )
+                    self.assertEqual(direct_observation["lineage"]["state"], "direct")
+                    self.assertEqual(
+                        direct_observation["lineage"]["origin"]["extraction_run"]["id"],
+                        str(extracted.run_id),
+                    )
+                    self.assertEqual(
+                        len(direct_observation["lineage"]["evidence_refs"]),
+                        2,
+                    )
+                    manifest_response = await client.get(
+                        f"/api/v2/extractions/{extracted.run_id}/inputs"
+                    )
+                    self.assertEqual(manifest_response.status_code, 200)
+                    manifest_payload = manifest_response.json()
+                    self.assertEqual(
+                        manifest_payload["status"],
+                        "frozen_manifest_present",
+                    )
+                    self.assertEqual(manifest_payload["input_count"], 1)
+                    self.assertEqual(len(manifest_payload["inputs"]), 1)
+                    self.assertEqual(
+                        manifest_payload["inputs"][0]["evidence_fragment_id"],
+                        str(fragment.id),
+                    )
+                    dashboard_view_response = await client.get(
+                        f"/api/v2/dashboards/{dashboard.id}/versions/1/view"
+                    )
+                    self.assertEqual(dashboard_view_response.status_code, 200)
+                    dashboard_panel = dashboard_view_response.json()["panels"][0]
+                    self.assertEqual(dashboard_panel["data_state"], "unverified")
+                    self.assertEqual(dashboard_panel["data"]["sales"], 43)
+                    self.assertEqual(len(dashboard_panel["evidence"]), 1)
 
                     calculations_response = await client.get(
                         "/api/v2/verification/calculations",
@@ -445,20 +762,39 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         calculations_response.json()[0]["replay_hash"],
                         calculation_run.replay_hash,
                     )
+                    calculated_response = await client.get(
+                        f"/api/v2/evidence/observations/{calculated.id}"
+                    )
+                    self.assertEqual(calculated_response.status_code, 200)
+                    calculated_payload = calculated_response.json()
+                    self.assertEqual(
+                        calculated_payload["lineage"]["origin"]["kind"],
+                        "calculation",
+                    )
+                    self.assertEqual(
+                        calculated_payload["lineage"]["origin"][
+                            "parent_observation_ids"
+                        ],
+                        [str(observation.id), str(second.id)],
+                    )
+                    self.assertEqual(
+                        len(calculated_payload["lineage"]["evidence_refs"]),
+                        2,
+                    )
 
                     validations_response = await client.get(
                         "/api/v2/verification/validations",
                         params={"panel_version_key": str(panel_version.id)},
                     )
                     self.assertEqual(validations_response.status_code, 200)
-                    self.assertEqual(len(validations_response.json()), 3)
+                    self.assertEqual(len(validations_response.json()), 4)
 
                     reviews_response = await client.get(
                         "/api/v2/verification/reviews",
                         params={"panel_version_key": str(panel_version.id)},
                     )
                     self.assertEqual(reviews_response.status_code, 200)
-                    self.assertEqual(len(reviews_response.json()), 2)
+                    self.assertEqual(len(reviews_response.json()), 3)
                     selected_review = next(
                         item
                         for item in reviews_response.json()
@@ -477,6 +813,21 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         if item["id"] == str(trust_assessment.id)
                     )
                     self.assertTrue(selected_assessment["currently_eligible"])
+                    trusted_observations_response = await client.get(
+                        "/api/v2/evidence/observations",
+                        params={
+                            "panel_version_key": str(panel_version.id),
+                            "trusted_only": "true",
+                        },
+                    )
+                    self.assertEqual(trusted_observations_response.status_code, 200)
+                    self.assertIn(
+                        str(observation.id),
+                        {
+                            item["id"]
+                            for item in trusted_observations_response.json()
+                        },
+                    )
 
                     insight_response = await client.post(
                         "/api/v2/insights",
@@ -511,6 +862,163 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         repeated_insight_response.json()["id"],
                         insight["id"],
                     )
+
+                    # A corroborating peer revision must immediately stale the
+                    # target's historical assessment even though the target
+                    # observation itself has not changed.
+                    peer_revision_response = await client.post(
+                        f"/api/v2/evidence/observations/{second.id}/revisions",
+                        json={
+                            "raw_value": {"value": 43},
+                            "normalized_value": {"value": 43},
+                            "reason": "Independent source republished the filing.",
+                            "revised_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(
+                        peer_revision_response.status_code,
+                        201,
+                        peer_revision_response.text,
+                    )
+                    self.assertFalse(
+                        await TrustService(
+                            db,
+                            artifact_store=LocalArtifactStore(
+                                Path(temporary_directory)
+                            ),
+                        ).is_assessment_current(trust_assessment)
+                    )
+                    peer_stale_trusted_response = await client.get(
+                        "/api/v2/evidence/observations",
+                        params={
+                            "panel_version_key": str(panel_version.id),
+                            "trusted_only": "true",
+                        },
+                    )
+                    self.assertNotIn(
+                        str(observation.id),
+                        {
+                            item["id"]
+                            for item in peer_stale_trusted_response.json()
+                        },
+                    )
+                    peer_stale_insight_response = await client.post(
+                        "/api/v2/insights",
+                        json={
+                            "observation_ids": [str(observation.id)],
+                            "created_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(peer_stale_insight_response.status_code, 422)
+
+                    legacy_validation = ValidationRun(
+                        comparison_key=validation.comparison_key,
+                        observation_ids=validation.observation_ids,
+                        rule_version="numeric-v1",
+                        tolerance=validation.tolerance,
+                        result=validation.result,
+                        state=VerificationState.PASSED,
+                    )
+                    db.add(legacy_validation)
+                    await db.commit()
+                    legacy_rule_assessment = await TrustService(
+                        db,
+                        artifact_store=LocalArtifactStore(
+                            Path(temporary_directory)
+                        ),
+                    ).assess(
+                        observation_id=observation.id,
+                        validation_run_id=legacy_validation.id,
+                    )
+                    self.assertFalse(legacy_rule_assessment.eligible)
+                    self.assertIn(
+                        "VALIDATION_RULE_NOT_TRUSTED_BY_CURRENT_POLICY",
+                        legacy_rule_assessment.reason_codes,
+                    )
+
+                    # A numerically matching row with valid evidence but no
+                    # Extraction/Revision/Calculation origin may produce an
+                    # immutable ValidationRun, but it must never authorize the
+                    # target observation under the current Trust policy.
+                    originless_validation, originless_review = (
+                        await VerificationService(db).validate_observations(
+                            [observation.id, originless_peer.id],
+                            absolute_tolerance=2,
+                            relative_tolerance=0,
+                        )
+                    )
+                    self.assertEqual(originless_validation.state.value, "passed")
+                    self.assertIsNone(originless_review)
+                    originless_assessment = await TrustService(
+                        db,
+                        artifact_store=LocalArtifactStore(
+                            Path(temporary_directory)
+                        ),
+                    ).assess(
+                        observation_id=observation.id,
+                        validation_run_id=originless_validation.id,
+                    )
+                    self.assertFalse(originless_assessment.eligible)
+                    self.assertIn(
+                        "VALIDATION_PEER_TRUST_REPLAY_FAILED",
+                        originless_assessment.reason_codes,
+                    )
+                    self.assertEqual(
+                        originless_assessment.details["validation_replay"][
+                            "peer_checks"
+                        ][str(originless_peer.id)]["origin_count"],
+                        0,
+                    )
+
+                    # Validation provenance metadata alone is insufficient:
+                    # remove only the disposable corroborator bytes and prove
+                    # Trust replays every peer artifact instead of trusting the
+                    # stored PASSED result.
+                    LocalArtifactStore(Path(temporary_directory)).path_for(
+                        independent_artifact.sha256
+                    ).unlink()
+                    missing_artifact_validation, missing_artifact_review = (
+                        await VerificationService(db).validate_observations(
+                            [observation.id, second.id],
+                            absolute_tolerance=2,
+                            relative_tolerance=0,
+                        )
+                    )
+                    self.assertEqual(
+                        missing_artifact_validation.state.value,
+                        "passed",
+                    )
+                    self.assertIsNone(missing_artifact_review)
+                    missing_artifact_assessment = await TrustService(
+                        db,
+                        artifact_store=LocalArtifactStore(
+                            Path(temporary_directory)
+                        ),
+                    ).assess(
+                        observation_id=observation.id,
+                        validation_run_id=missing_artifact_validation.id,
+                    )
+                    self.assertFalse(missing_artifact_assessment.eligible)
+                    self.assertIn(
+                        "VALIDATION_PEER_TRUST_REPLAY_FAILED",
+                        missing_artifact_assessment.reason_codes,
+                    )
+                    self.assertFalse(
+                        missing_artifact_assessment.details["validation_replay"][
+                            "peer_checks"
+                        ][str(second.id)]["artifact_integrity"]
+                    )
+
+                    latest_assessments_response = await client.get(
+                        "/api/v2/verification/assessments",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    initial_after_recheck = next(
+                        item
+                        for item in latest_assessments_response.json()
+                        if item["id"] == str(trust_assessment.id)
+                    )
+                    self.assertFalse(initial_after_recheck["currently_eligible"])
 
                     first_decision_response = await client.post(
                         f"/api/v2/verification/reviews/{review_case.id}/decisions",
@@ -548,6 +1056,28 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         first_decision["id"],
                     )
 
+                    string_revision_response = await client.post(
+                        f"/api/v2/evidence/observations/{observation.id}/revisions",
+                        json={
+                            "raw_value": {"value": "44"},
+                            "normalized_value": {"value": "44"},
+                            "reason": "Invalid string correction.",
+                            "revised_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(string_revision_response.status_code, 422)
+                    unit_revision_response = await client.post(
+                        f"/api/v2/evidence/observations/{observation.id}/revisions",
+                        json={
+                            "raw_value": {"value": 44},
+                            "normalized_value": {"value": 44},
+                            "unit": "thousand_vehicle",
+                            "reason": "Invalid implicit conversion.",
+                            "revised_by": "integration-test",
+                        },
+                    )
+                    self.assertEqual(unit_revision_response.status_code, 422)
+
                     revision_response = await client.post(
                         f"/api/v2/evidence/observations/{observation.id}/revisions",
                         json={
@@ -555,6 +1085,10 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             "normalized_value": {"value": 44},
                             "reason": "Source issued a correction.",
                             "revised_by": "integration-test",
+                            "evidence_claims": {
+                                "sales": [str(fragment.id)],
+                                "brand": [str(fragment.id)],
+                            },
                             "metadata": {"ticket": "TEST-1"},
                         },
                     )
@@ -571,6 +1105,29 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(replacement.supersedes_id, observation.id)
                     self.assertEqual(replacement.normalized_value, {"value": 44})
                     self.assertEqual(replacement.trust_state.value, "unverified")
+                    self.assertIsNone(replacement.extraction_model)
+                    replacement_links = (
+                        await db.execute(
+                            select(ObservationEvidenceLink)
+                            .where(
+                                ObservationEvidenceLink.observation_id
+                                == replacement.id
+                            )
+                            .order_by(ObservationEvidenceLink.ordinal)
+                        )
+                    ).scalars().all()
+                    self.assertEqual(len(replacement_links), 2)
+                    self.assertIsNone(
+                        await db.get(ObservationExtractionLink, replacement.id)
+                    )
+                    replacement_response = await client.get(
+                        f"/api/v2/evidence/observations/{replacement.id}"
+                    )
+                    self.assertEqual(replacement_response.status_code, 200)
+                    self.assertEqual(
+                        replacement_response.json()["lineage"]["origin"]["kind"],
+                        "revision",
+                    )
 
                     duplicate_response = await client.post(
                         f"/api/v2/evidence/observations/{observation.id}/revisions",
@@ -588,10 +1145,13 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         params={"panel_version_key": str(panel_version.id)},
                     )
                     self.assertEqual(revisions_response.status_code, 200)
-                    self.assertEqual(len(revisions_response.json()), 1)
-                    self.assertEqual(
-                        revisions_response.json()[0]["replacement_observation_id"],
+                    self.assertEqual(len(revisions_response.json()), 2)
+                    self.assertIn(
                         str(replacement.id),
+                        {
+                            item["replacement_observation_id"]
+                            for item in revisions_response.json()
+                        },
                     )
 
                     stale_assessments_response = await client.get(
@@ -604,6 +1164,17 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         if item["id"] == str(trust_assessment.id)
                     )
                     self.assertFalse(stale_assessment["currently_eligible"])
+                    stale_trusted_response = await client.get(
+                        "/api/v2/evidence/observations",
+                        params={
+                            "panel_version_key": str(panel_version.id),
+                            "trusted_only": "true",
+                        },
+                    )
+                    self.assertNotIn(
+                        str(observation.id),
+                        {item["id"] for item in stale_trusted_response.json()},
+                    )
 
                     stale_insight_response = await client.post(
                         "/api/v2/insights",
@@ -613,6 +1184,51 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         },
                     )
                     self.assertEqual(stale_insight_response.status_code, 422)
+
+                    # The dashboard keeps the latest failed run auditable but
+                    # never promotes its output into the visible metric data.
+                    db.add(
+                        ExtractionRun(
+                            panel_version_id=panel_version.id,
+                            snapshot_id=original_snapshot.id,
+                            provider="fake",
+                            model="invalid-output-test",
+                            prompt_version=panel_version.extraction_prompt_version,
+                            input_hash="0" * 64,
+                            output={
+                                "records": [
+                                    {
+                                        "data": {"brand": "BYD", "sales": 999},
+                                        "evidence": {
+                                            "brand": [str(fragment.id)],
+                                            "sales": [
+                                                str(fragment.id),
+                                                str(fragment.id),
+                                            ],
+                                        },
+                                    }
+                                ]
+                            },
+                            validation={
+                                "valid": False,
+                                "issues": [
+                                    {
+                                        "path": "$.records[0].evidence.sales",
+                                        "message": "duplicate citation",
+                                    }
+                                ],
+                            },
+                        )
+                    )
+                    await db.commit()
+                    invalid_view_response = await client.get(
+                        f"/api/v2/dashboards/{dashboard.id}/versions/1/view"
+                    )
+                    self.assertEqual(invalid_view_response.status_code, 200)
+                    invalid_panel = invalid_view_response.json()["panels"][0]
+                    self.assertEqual(invalid_panel["data_state"], "invalid")
+                    self.assertIsNone(invalid_panel["data"])
+                    self.assertEqual(len(invalid_panel["evidence"]), 1)
 
 
 if __name__ == "__main__":

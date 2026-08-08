@@ -1,50 +1,81 @@
 # AutoPrism V2 Test Record
 
-Last full validation: 2026-07-27 (Asia/Shanghai).
+Last full validation: 2026-08-09 (Asia/Shanghai).
 
 ## Automated backend
 
-`python -m unittest discover -s tests -v` passed 24/24 tests against the
-disposable PostgreSQL database. The fast no-database run also passed all
-19 applicable tests and skipped the 5 database tests explicitly.
+The final M6 gate ran from a zero-migration disposable PostgreSQL database and
+passed 39/39 backend tests. The final count supersedes the earlier 35/35 and
+37/37 intermediate results after boolean-JSON-Schema, NaN/Infinity,
+deterministic source-path and malformed historical model-settings fail-closed
+regressions were added.
 
 Coverage includes:
 
-- HTML CSS selectors, RSS XPath, PDF pages, CSV cells, XLSX cells, JSON Pointers;
+- HTML CSS selectors, RSS XPath, PDF pages, CSV/XLSX cells and JSON Pointers;
 - streaming size limits and acquisition policy decisions;
-- artifact SHA-256 storage and verification;
-- immutable ORM and PostgreSQL trigger guards;
-- audited observation revision creation and duplicate-revision rejection;
-- source and dashboard REST API contracts;
-- source pool, snapshot, artifact, and fragment persistence;
-- missing credential blocking and human-action creation;
-- frozen Schema extraction with per-field evidence IDs;
-- ordered dashboard history, complete version detail and append-only version creation;
-- safe UI DSL nodes bound to fields and table columns in the frozen Schema;
-- provider-neutral adapters and deterministic JSON mapping;
-- deterministic decimal calculation and replay hash;
-- numeric cross-source tolerance and review routing;
-- independent-source enforcement, complete trust-history APIs, single-head
-  review decisions and duplicate correction rejection;
-- artifact/fragment eligibility replay, normalized L2 inputs, idempotent
-  stored-input summaries and stale-assessment rejection after revision.
+- content-addressed artifact bytes, fragment hashes and locator replay;
+- immutable ORM guards and PostgreSQL UPDATE/DELETE/TRUNCATE rejection;
+- `evidence-extraction-v3` ordered input sets, header/entry hashes and exact
+  input-hash replay;
+- normalized multi-claim observation evidence sets and direct extraction-run
+  origin links;
+- deterministic mapping replay, rejection of constants, non-finite values and
+  non-deterministic extraction eligibility;
+- strict revision numeric/Schema/scope/evidence contracts and single-head
+  supersession;
+- exact calculation parameter shapes and malformed historical JSON
+  fail-closed behavior;
+- `numeric-v2-source-artifact-publisher` comparison scope, independent source,
+  artifact and snapshot-frozen publisher identities;
+- validation result/rule replay and current-head/evidence/origin checks for
+  every peer;
+- `trust-eligibility-v3-validation-replay`, dynamic current eligibility,
+  `trusted_only` reads and stale-assessment rejection;
+- eligible stored-input L2 behavior and immutable historical inputs.
+
+The fast non-database command remains useful during development; database tests
+are explicitly gated by `AUTOPRISM_RUN_DB_TESTS=1`. The 39/39 release evidence
+comes from the full disposable-PostgreSQL run, not the skipped fast run.
 
 ## Database migrations
 
-- `alembic check`: no schema drift.
-- current revision: `0004_v2_trust_assessments_l2`.
-- preserved historical database upgraded its migration graph without deleting,
-  stamping or rewriting real data.
-- empty disposable database upgraded through the complete V2 chain and the V1
-  compatibility revisions.
-- disposable M5 downgrade
-  `0004_v2_trust_assessments_l2 -> 0003_v2_lineage_uniqueness` succeeded.
-- re-upgrade to `0004_v2_trust_assessments_l2` succeeded.
-- second `alembic check` reported no new operations.
+Current revision: `0005_v2_observation_lineage`.
+
+Fresh-database gate:
+
+- created a new disposable PostgreSQL database from zero migrations;
+- upgraded the complete V1-compatible and V2 migration graph to `head`;
+- ran `alembic check` with no drift;
+- ran the final backend suite: 39/39 passed.
+
+Populated-database gate:
+
+- completed a real PostgreSQL backup before migration at
+  `/private/tmp/autoprism_v2_pre_0005_20260809.dump` (841 KiB, SHA-256
+  `158de9f3543bbb82bdb1dfb23e26a666c8a67d8ca0050d598ea1830eb1e67cdd`);
+- archived the unchanged content-addressed artifact volume after the migration
+  at `/private/tmp/autoprism_v2_artifacts_20260809.tar.gz` (126 KiB, SHA-256
+  `adf89817cc8f347b88cc3639973be9a383b8982296380664e5eae5adfe90e469`),
+  and listed all three expected artifact hashes from the archive;
+- upgraded the preserved populated database non-destructively to `0005`;
+- retained all six historical target observations;
+- created three `backfill_exact` observation-to-run links where one unique
+  panel/snapshot/model/prompt/time/value/citation match existed;
+- left three observations unresolved rather than choosing a likely run;
+- recorded `method=exact_output_match_only` in the immutable lineage backfill
+  audit;
+- completed the populated migration/drift gate without deleting or rewriting
+  real history.
+
+`0005` intentionally refuses a downgrade when the new immutable lineage or
+manifest tables contain data. Downgrade/re-upgrade exercises belong only on an
+empty disposable database; a rejection on a populated database is the expected
+fail-closed result.
 
 ## Real data end-to-end
 
-The reference seed captured three NHTSA official API responses:
+The existing reference seed captured three NHTSA official API responses:
 
 | Panel | Result | Artifact SHA-256 |
 |---|---:|---|
@@ -52,36 +83,37 @@ The reference seed captured three NHTSA official API responses:
 | Tesla MY2024 models | 6 records | `61b8535b63d89d34b5018f81df62ca4d6fb9d625ddd114d97ab4771fdaeb4f96` |
 | Tesla Model 3 MY2024 rating variants | 2 records | `1c81cfbffbb3085688892860846bb9fe8092f509ef3391ef25ffec02e3bdd245` |
 
-All three collection jobs and extraction runs succeeded with zero Schema
-issues. Values use deterministic mappings rather than LLM arithmetic.
+These are historical real-source artifacts and Schema-valid deterministic
+outputs, not a claim that every observation is currently trust eligible. The
+M6 populated migration audit is the authoritative record for the six legacy
+observation rows: three exact links and three unresolved.
 
-## Frontend and Compose
+## Frontend and dependency gates
 
-- `npm run build`: passed TypeScript and Vite production build.
-- `npm audit`: zero known vulnerabilities after upgrading to Vite 6.4.3.
-- containerized `pip check`: no broken Python requirements. The developer
-  machine's unrelated global Python environment is not part of this result.
-- five Compose services started; frontend, web, PostgreSQL, and Redis healthy.
-- frontend Nginx successfully proxied `/api/v2/dashboards`.
-- `/ready` returned PostgreSQL and Redis `ok`.
-- browser 1440×800 verification rendered the V2 cockpit, verified situation
-  layer, all three panels and their evidence hashes.
-- provenance drawer showed every returned evidence fragment, JSON Pointer,
-  timestamps, file/text hashes, Schema, UI DSL, source and artifact download.
-- 390×844 responsive check: three panels rendered and body width equaled viewport width (no horizontal overflow).
-- V1-compatible role/view switcher and truthful no-geocode map state passed.
-- current V2 JavaScript bundle emitted no browser warnings or errors.
-- operations smoke loaded the real 3-source/6-job state, kept all collection
-  actions disabled until compliance acknowledgement, and exposed the human
-  action and Schema-bound extraction paths without mutating production data.
-- trust-workspace smoke loaded 2 real UNVERIFIED observations for the selected
-  panel, separated Schema validity from trust, displayed source hosts/hashes
-  and explicit validation tolerances, and showed honest zero states for
-  calculations, validations and reviews. Desktop and 390×844 mobile layouts
-  remained usable without writing real history.
-- eligibility/L2 smoke displayed both real observations as NOT ASSESSED,
-  zero ELIGIBLE, a disabled L2 action and the explicit “L2 当前不可用” state.
-  The current JavaScript bundle emitted no warnings/errors.
+The 2026-08-09 M6 code gates passed:
+
+- `npm run typecheck`;
+- `npm run build` (TypeScript plus Vite production build);
+- `npm audit` with zero reported vulnerabilities.
+
+Previous Compose, 1440×800 desktop, 390×844 responsive, evidence drawer and
+clean-console results dated 2026-07-27 remain historical M1–M5 evidence. They
+are not relabeled as M6 validation.
+
+## M6 visual and browser gate
+
+**Not run.** The current execution environment has no available browser
+runtime. Therefore the following current-worktree evidence is still required:
+
+- same-size V1/V2 desktop screenshots;
+- 390×844 responsive screenshots and horizontal-overflow inspection;
+- current-bundle browser console inspection;
+- loading, empty, error and dangerous-action interaction smoke;
+- evidence drawer, dynamic panel, revision, validation and trust-state smoke.
+
+An older screenshot or clean console record must not be substituted for this
+gate. M6 can be described as backend/data/frontend-build complete, but its
+visual release check remains pending.
 
 ## Known non-blocking warnings
 

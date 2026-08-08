@@ -221,6 +221,179 @@ class MetricObservation(Base):
     )
 
 
+class ObservationEvidenceSet(Base):
+    """Frozen cardinality for one observation's evidence citations."""
+
+    __tablename__ = "observation_evidence_sets"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    citation_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "citation_count > 0",
+            name="ck_observation_evidence_set_count",
+        ),
+    )
+
+
+class ObservationEvidenceLink(Base):
+    """Ordered evidence fragments supporting one frozen INFO evidence set."""
+
+    __tablename__ = "observation_evidence_links"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("observation_evidence_sets.observation_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    evidence_fragment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_fragments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    claim_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    field_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_observation_evidence_ordinal"),
+        CheckConstraint(
+            "role IN ('primary', 'supporting', 'dimension', 'calculation_input')",
+            name="ck_observation_evidence_role",
+        ),
+        UniqueConstraint(
+            "observation_id",
+            "evidence_fragment_id",
+            "field_path",
+            name="uq_observation_evidence_claim_fragment",
+        ),
+        Index(
+            "uq_observation_evidence_primary",
+            "observation_id",
+            unique=True,
+            postgresql_where=role == "primary",
+        ),
+    )
+
+
+class LineageBackfillAudit(Base):
+    """Append-only migration evidence for conservative historical run linking."""
+
+    __tablename__ = "lineage_backfill_audits"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class ObservationExtractionLink(Base):
+    """Append-only direct link from an extracted INFO value to its exact run output."""
+
+    __tablename__ = "observation_extraction_links"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    extraction_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("extraction_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    output_record_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    field_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    match_method: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "output_record_ordinal >= 0",
+            name="ck_observation_extraction_record_ordinal",
+        ),
+        CheckConstraint(
+            "match_method IN ('direct_write', 'backfill_exact')",
+            name="ck_observation_extraction_match_method",
+        ),
+        UniqueConstraint(
+            "extraction_run_id",
+            "output_record_ordinal",
+            "field_path",
+            name="uq_observation_extraction_output_field",
+        ),
+    )
+
+
+class ExtractionRunInputSet(Base):
+    """Frozen cardinality for one extraction request input manifest."""
+
+    __tablename__ = "extraction_run_input_sets"
+
+    extraction_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("extraction_runs.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    input_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "input_count >= 0",
+            name="ck_extraction_run_input_set_count",
+        ),
+    )
+
+
+class ExtractionRunInput(Base):
+    """Ordered immutable manifest of fragments supplied to one extraction."""
+
+    __tablename__ = "extraction_run_inputs"
+
+    extraction_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("extraction_run_input_sets.extraction_run_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    evidence_fragment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_fragments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    extracted_text_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    manifest_entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_extraction_run_input_ordinal"),
+        CheckConstraint(
+            "extracted_text_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_extraction_run_input_text_hash_hex",
+        ),
+        CheckConstraint(
+            "manifest_entry_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_extraction_run_input_entry_hash_hex",
+        ),
+        UniqueConstraint(
+            "extraction_run_id",
+            "evidence_fragment_id",
+            name="uq_extraction_run_input_fragment",
+        ),
+    )
+
+
 class ObservationRevision(Base):
     """Auditable explanation of one immutable observation replacement."""
 
@@ -479,6 +652,12 @@ for _immutable_model in (
     SourceSnapshot,
     EvidenceFragment,
     MetricObservation,
+    ObservationEvidenceSet,
+    ObservationEvidenceLink,
+    LineageBackfillAudit,
+    ObservationExtractionLink,
+    ExtractionRunInputSet,
+    ExtractionRunInput,
     ObservationRevision,
     CalculationRun,
     ValidationRun,

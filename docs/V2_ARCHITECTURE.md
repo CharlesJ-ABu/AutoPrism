@@ -52,17 +52,34 @@ Source
   -> SourceSnapshot (one retrieval event)
   -> EvidenceArtifact (content-addressed immutable bytes)
   -> EvidenceFragment (page/cell/selector/text-span locator)
+  -> ExtractionRunInputSet / ExtractionRunInput
+       (ordered evidence-extraction-v3 input manifest)
+  -> ExtractionRun (frozen prompt/model/input hash/output)
+  -> ObservationExtractionLink (exact run, record ordinal and field path)
+  -> ObservationEvidenceSet / ObservationEvidenceLink
+       (ordered metric/dimension claims and one-or-many fragments)
   -> MetricObservation (raw and normalized value)
   -> CalculationRun (deterministic, replayable operation)
   -> ValidationRun (cross-source agreement)
   -> ReviewCase (only when automation cannot resolve)
+  -> TrustAssessment (append-only current-policy decision)
+  -> L2InsightInput / L2Insight (eligible stored inputs only)
 ```
+
+M6 uses `evidence-extraction-v3`. A new direct observation origin is accepted
+only when the input manifest is created in the same transaction, its ordered
+entries and hashes replay, every claim citation belongs to that manifest, and
+the observation matches the frozen panel Schema and exact output field.
+Pre-M6 records are never upgraded by inference: migration `0005` writes an
+association only for a unique exact match and records all unresolved rows in an
+append-only backfill audit.
 
 Corrections never overwrite observations. A correction creates a new
 observation whose `supersedes_id` points at the previous observation and an
 `ObservationRevision` audit record captures the reason and actor. ORM guards
 reject accidental mutation in application code, while PostgreSQL triggers
-reject direct `UPDATE` and `DELETE` operations on evidence and version tables.
+reject direct `UPDATE`, `DELETE` and `TRUNCATE` operations on evidence and
+version tables.
 
 ## Trust rules
 
@@ -70,14 +87,29 @@ A core metric is not trusted unless:
 
 - the original artifact is retained and its SHA-256 matches;
 - its source URL and retrieval time are known;
-- its publication or observation time is known or explicitly marked unknown;
 - a locator can reproduce the evidence fragment;
-- units, currencies, time basis, and geographic scope are explicit;
-- calculations are performed by deterministic code and can be replayed;
-- cross-source validation passes, or a human review approves it.
+- its metric obeys the frozen Schema unit contract, while currency, time,
+  geography and dimensions are frozen and must match across validation scope
+  where applicable;
+- its direct origin is unambiguous and replayable;
+- a direct extraction is `evidence-extraction-v3` and deterministic output
+  replay matches exactly; a non-deterministic model output remains stored but
+  cannot become eligible without a future evidence-bound attestation contract;
+- cross-source validation under `numeric-v2-source-artifact-publisher` passes
+  with at least two independent source-definition, artifact and frozen
+  publisher identities;
+- every validation peer is still a current observation head and independently
+  passes artifact, locator, claim and origin replay;
+- the latest assessment is accepted under
+  `trust-eligibility-v3-validation-replay`.
 
 LLMs may discover sources, extract candidates, propose formulas, and explain
 results. LLMs do not execute authoritative arithmetic or invent missing values.
+Human review is append-only audit evidence, but current M6 policy does not let
+an approval replace a failed PASSED validation or unreplayable extraction.
+Decimal calculation runs are stored and replayed, while the current trust
+engine allowlist remains empty until M7 defines unit/currency conversion and
+error semantics.
 
 ## Storage and deployment
 
@@ -114,6 +146,26 @@ This milestone is complete on `v2`. The reference dashboard uses three NHTSA
 public APIs. Every response is retained as an artifact, represented by a root
 JSON Pointer, mapped deterministically, validated against a frozen schema, and
 shown through the provenance UI.
+
+## M6 lineage and migration gate
+
+M6 was validated on 2026-08-09 against both a fresh disposable database and a
+backed-up populated database. Migration `0005_v2_observation_lineage` adds
+frozen extraction-input manifests, normalized observation evidence sets,
+direct observation-to-run associations, conservative backfill audit rows,
+deferred completeness/origin constraints, and UPDATE/DELETE/TRUNCATE guards.
+
+The populated database contained six historical target observations for the
+backfill audit. Three had one exact run/output/evidence match and were linked as
+`backfill_exact`; three remained unresolved. No candidate was selected by
+proximity, ordering, default value or other guess. Fresh and populated
+migration gates passed, as did the final 39/39 disposable-PostgreSQL backend suite and
+frontend typecheck/build/dependency audit.
+
+The current execution environment has no browser runtime. Earlier M1–M5 visual
+records remain historical evidence only; M6 still requires new same-size V1/V2
+screenshots, console inspection and desktop/mobile interaction smoke before its
+visual release gate can be marked complete.
 
 ## Runtime topology
 

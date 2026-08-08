@@ -4,12 +4,16 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.domain.evidence import (
+    CalculationOperation,
+    normalize_calculation_contract,
+)
 from app.models.evidence import (
     CalculationRun,
     MetricObservation,
@@ -33,11 +37,23 @@ class ValidationRequest(BaseModel):
 
 
 class CalculationRequest(BaseModel):
-    operation: str
+    operation: CalculationOperation
     input_observation_ids: list[uuid.UUID] = Field(min_length=1)
     output_metric_key: str
     output_unit: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_operation_parameters(self):
+        # Request validation has no database values yet. Zero placeholders let
+        # the shared domain helper validate operation arity and parameter shape;
+        # VerificationService repeats the same contract against stored values.
+        normalize_calculation_contract(
+            self.operation,
+            [0] * len(self.input_observation_ids),
+            self.parameters,
+        )
+        return self
 
 
 class DecisionRequest(BaseModel):
@@ -65,7 +81,7 @@ async def validate_observations(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {
         "validation_run_id": str(run.id),
@@ -90,7 +106,7 @@ async def calculate(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {
         "observation_id": str(observation.id),
@@ -256,8 +272,9 @@ async def assess_observation(
     payload: AssessmentRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    service = TrustService(db)
     try:
-        assessment = await TrustService(db).assess(
+        assessment = await service.assess(
             observation_id=payload.observation_id,
             validation_run_id=payload.validation_run_id,
         )
@@ -284,7 +301,7 @@ async def assess_observation(
             else None
         ),
         "eligible": assessment.eligible,
-        "currently_eligible": assessment.eligible,
+        "currently_eligible": await service.is_assessment_current(assessment),
         "reason_codes": assessment.reason_codes,
         "policy_version": assessment.policy_version,
         "details": assessment.details,
@@ -311,18 +328,22 @@ async def list_assessments(
         )
     rows = (
         await db.execute(
-            statement.order_by(desc(TrustAssessment.created_at)).limit(limit)
+            statement.order_by(
+                desc(TrustAssessment.created_at),
+                desc(TrustAssessment.id),
+            ).limit(limit)
         )
     ).all()
     output = []
+    latest_observation_ids: set[uuid.UUID] = set()
+    trust_service = TrustService(db)
     for assessment, observation in rows:
-        replacement = (
-            await db.execute(
-                select(MetricObservation.id)
-                .where(MetricObservation.supersedes_id == observation.id)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        is_latest_assessment = observation.id not in latest_observation_ids
+        latest_observation_ids.add(observation.id)
+        currently_eligible = bool(
+            is_latest_assessment
+            and await trust_service.is_assessment_current(assessment)
+        )
         output.append(
             {
                 "id": str(assessment.id),
@@ -344,7 +365,7 @@ async def list_assessments(
                     else None
                 ),
                 "eligible": assessment.eligible,
-                "currently_eligible": assessment.eligible and replacement is None,
+                "currently_eligible": currently_eligible,
                 "reason_codes": assessment.reason_codes,
                 "policy_version": assessment.policy_version,
                 "details": assessment.details,

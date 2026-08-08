@@ -104,6 +104,110 @@ export interface HumanAction {
   resolved_at: string | null;
 }
 
+export type ObservationLineageState =
+  | 'direct'
+  | 'derived'
+  | 'legacy_unverified'
+  | 'incomplete';
+
+export type ObservationOriginKind =
+  | 'extraction'
+  | 'revision'
+  | 'calculation'
+  | 'conversion'
+  | 'legacy';
+
+export interface ObservationExtractionRun {
+  id: string;
+  panel_version_id: string;
+  snapshot_id: string;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  input_hash: string;
+  validation: {
+    valid: boolean;
+    issues: Array<{ path: string; message: string }>;
+    [key: string]: unknown;
+  };
+  input_manifest: {
+    status: 'frozen_header_present' | 'legacy_unreplayable';
+    input_count: number | null;
+    frozen_count: number | null;
+    manifest_hash: string | null;
+  };
+  output_record_ordinal: number;
+  field_path: string;
+  match_method: 'direct_write' | 'backfill_exact';
+  created_at: string;
+}
+
+export interface ExtractionInputManifest {
+  extraction_run_id: string;
+  status: 'frozen_manifest_present' | 'legacy_unreplayable';
+  input_count: number | null;
+  frozen_count: number | null;
+  manifest_hash: string | null;
+  inputs: Array<{
+    ordinal: number;
+    evidence_fragment_id: string;
+    snapshot_id: string;
+    source_key: string;
+    source_url: string;
+    retrieved_at: string;
+    locator_type: string;
+    locator: Record<string, unknown>;
+    extracted_text: string | null;
+    extracted_text_sha256: string;
+    manifest_entry_hash: string;
+    artifact_id: string;
+    artifact_sha256: string;
+    artifact_byte_size: number;
+    artifact_media_type: string;
+  }>;
+}
+
+export interface ObservationEvidenceFragment {
+  fragment_id: string;
+  locator_type: string;
+  locator: Record<string, unknown>;
+  text: string | null;
+  text_sha256: string | null;
+  snapshot_id: string;
+  source_definition_id: string | null;
+  source_key: string;
+  source_url: string;
+  retrieved_at: string;
+  published_at: string | null;
+  artifact_id: string;
+  artifact_sha256: string;
+  artifact_byte_size: number;
+  artifact_media_type: string;
+}
+
+export interface ObservationEvidenceRef {
+  association_id: string;
+  ordinal: number;
+  role: 'primary' | 'supporting' | 'dimension' | 'calculation_input';
+  claim_key: string;
+  field_path: string;
+  fragment: ObservationEvidenceFragment;
+}
+
+export interface ObservationLineage {
+  state: ObservationLineageState;
+  origin: {
+    kind: ObservationOriginKind;
+    extraction_run: ObservationExtractionRun | null;
+    parent_observation_ids: string[];
+    revision_id: string | null;
+    calculation_run_id: string | null;
+    conversion_run_id: string | null;
+  };
+  evidence_refs: ObservationEvidenceRef[];
+  evidence_set_complete: boolean;
+}
+
 export interface MetricObservation {
   id: string;
   panel_version_key: string;
@@ -124,6 +228,8 @@ export interface MetricObservation {
   trust_state: 'unverified' | 'verified' | 'rejected' | 'legacy_unverified';
   supersedes_id: string | null;
   created_at: string;
+  lineage: ObservationLineage;
+  /** Compatibility-only singular citation. New UI must use lineage.evidence_refs. */
   evidence: {
     fragment_id: string;
     locator_type: string;
@@ -237,7 +343,7 @@ export interface Evidence {
   fragment_id: string;
   locator_type: string;
   locator: Record<string, unknown>;
-  text_sha256: string;
+  text_sha256: string | null;
   source_url: string;
   retrieved_at: string;
   published_at: string | null;
@@ -269,6 +375,7 @@ export interface PanelView {
   ui_dsl: UiDslNode;
   extraction_prompt_version: string;
   data: Record<string, unknown> | null;
+  data_state: 'not_run' | 'invalid' | 'unverified';
   extraction: {
     id: string;
     provider: string;
@@ -366,6 +473,8 @@ export const api = {
         body: JSON.stringify(payload),
       },
     ),
+  getExtractionInputs: (runId: string) =>
+    request<ExtractionInputManifest>(`/extractions/${runId}/inputs`),
   listObservations: (panelVersionKey: string) =>
     request<MetricObservation[]>(
       `/evidence/observations?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
@@ -387,6 +496,8 @@ export const api = {
       dimensions?: Record<string, unknown>;
       geographic_scope?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
+      evidence_fragment_ids?: string[];
+      evidence_claims?: Record<string, string[]>;
     },
   ) =>
     request<ObservationRevision>(`/evidence/observations/${observationId}/revisions`, {

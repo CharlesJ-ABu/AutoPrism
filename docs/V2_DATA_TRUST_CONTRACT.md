@@ -2,7 +2,14 @@
 
 This contract defines when AutoPrism may display, calculate, validate or use a
 value in an L2 insight. It is deliberately stricter than successful collection
-or JSON Schema validation.
+or JSON Schema validation. M6 policy versions frozen on 2026-08-09 are:
+
+- extraction contract: `evidence-extraction-v3`;
+- validation rule: `numeric-v2-source-artifact-publisher`;
+- trust policy: `trust-eligibility-v3-validation-replay`.
+
+Older policy labels remain immutable history but are not accepted as current
+eligibility proof.
 
 ## State boundaries
 
@@ -12,9 +19,11 @@ These states are independent and must never be collapsed into one badge:
 2. `evidence_cited`: each extracted field cites an exact fragment in the input
    snapshot.
 3. `calculation_replayable`: deterministic code can reproduce a calculation
-   from immutable observation IDs and the frozen plan.
+   from immutable observation IDs and the frozen plan. This is not the same as
+   `trusted_eligible`; the M6 trusted-calculation engine allowlist is empty.
 4. `cross_source_validated`: comparable observations from at least two
-   independent source definitions satisfy explicit tolerances.
+   independent source definitions, artifacts and frozen publisher identities
+   satisfy explicit tolerances.
 5. `human_approved`: an append-only review decision records a rationale and
    actor. Until authentication is connected, the actor is explicitly
    self-asserted and is not identity-verified.
@@ -42,7 +51,10 @@ guess.
 
 Artifacts, snapshots and fragments are append-only at both ORM and database
 trigger layers. A changed source creates a new snapshot linked to its
-predecessor. Artifact bytes and database metadata must be backed up together.
+predecessor. Publisher identity is normalized into immutable snapshot metadata
+at collection time; validation never reinterprets an old snapshot from a later
+mutable source-definition configuration. Artifact bytes and database metadata
+must be backed up together.
 
 ## INFO: structured observations
 
@@ -55,20 +67,40 @@ Extraction may only return facts present in supplied fragments. It may not
 browse, calculate, estimate or fill missing fields. Numeric authority is never
 delegated to a language model.
 
+For `evidence-extraction-v3`, every run freezes a non-empty ordered input set.
+Each `ExtractionRunInput` binds its ordinal, fragment ID, text SHA-256 and
+manifest-entry hash; the run binds the manifest count/hash and complete input
+payload hash. Trust replays the artifact bytes, parser locator, fragment text,
+manifest entries, prompt/panel/model contract and deterministic mapping output.
+A non-deterministic model response may be retained as an UNVERIFIED candidate,
+but M6 will not promote it to trusted eligibility without a future attestation
+mechanism.
+
+Every observation has a frozen `ObservationEvidenceSet` and ordered
+`ObservationEvidenceLink` rows. Links identify the metric or dimension claim,
+role, exact run-output field path and supporting fragment; the same physical
+fragment may legitimately support multiple claims. `ObservationExtractionLink`
+binds a direct observation to one extraction run, record ordinal and field
+path. Database constraints require one primary claim, contiguous cardinality
+and complete claim coverage, and permit at most one stored origin across
+extraction, revision or calculation. Current trust eligibility is stricter: it
+requires exactly one replayable origin.
+
 Corrections create a new UNVERIFIED observation with `supersedes_id` plus an
 `ObservationRevision`; the original stays unchanged. Database uniqueness
 constraints prevent two replacements of the same observation. A migration
 halts and reports existing forks rather than deleting or choosing historical
 rows.
 
-Known limitation: observations do not yet have a direct `extraction_run_id`
-foreign key or a many-to-many evidence relation. Until that migration is
-implemented, extraction lineage is reconstructed from panel, snapshot and
-fragment records and this limitation remains visible.
+Migration `0005_v2_observation_lineage` never guesses historical direct
+lineage. On the backed-up populated database it audited six observations,
+created three unique `backfill_exact` links and left three unresolved. The
+unresolved rows preserve their compatibility evidence and remain visibly
+unreplayable; no old observation, value or extraction run is rewritten.
 
 ## Deterministic calculations
 
-The only calculation engine is versioned Decimal code. Inputs are database
+The implemented calculation engine is versioned Decimal code. Inputs are database
 observation IDs; callers cannot submit fact values. Runs freeze operation,
 ordered inputs, parameters, output, engine version and replay hash.
 
@@ -80,26 +112,49 @@ ordered inputs, parameters, output, engine version and replay hash.
 - output remains UNVERIFIED and identifies itself as a deterministic
   calculation.
 
-Unit conversion, currency conversion, rounding/error propagation and a
-standalone replay-verification endpoint are not yet implemented and must not be
-presented as complete.
+M6 stores and replays these runs but deliberately has no trusted calculation
+engine version. General unit conversion, currency conversion, deterministic
+rounding/error propagation and a standalone replay-verification endpoint are
+M7 work and must not be presented as complete or eligible before those
+contracts exist.
 
 ## Cross-source validation
 
 Tolerances are mandatory request fields. Validation rejects duplicate IDs and
 non-comparable panel, Schema, metric, unit, currency, period, geography or
-dimension scopes. A run can pass only when at least two independent
-`SourceDefinition` identities are present. Repeated observations from one
-source create `NEEDS_REVIEW`, never `PASSED`.
+dimension scopes. Under `numeric-v2-source-artifact-publisher`, a run can pass
+only when at least two independent `SourceDefinition` IDs, artifact SHA-256
+identities and snapshot-frozen publisher identities are present. Repeated
+sources, repeated artifacts, repeated publishers or missing publisher identity
+create `NEEDS_REVIEW`, never `PASSED`.
 
-The run freezes source identities, independent-source count, tolerances,
+The run freezes source/artifact/publisher identities, their independent counts, tolerances,
 minimum/maximum/spread, rule version and result. Conflict or insufficient
 independence creates an immutable review case.
 
 A passed validation does not mutate an observation to VERIFIED. The
-`trust-eligibility-v1` assessment separately replays artifact/fragment
-integrity, current-head status, validation independence and calculation
-lineage, then records an append-only eligible/ineligible decision.
+`trust-eligibility-v3-validation-replay` assessment separately recomputes the
+comparison key, expected result/state and current rule. It also requires every
+validation peer to remain a current head and pass artifact bytes, fragment
+hash, parser locator, snapshot state, frozen evidence-set and unambiguous-origin
+replay. Superseding any peer immediately makes an old eligible assessment stale
+for `trusted_only` reads and new L2 creation.
+
+## Trust eligibility
+
+`TrustAssessment` is immutable historical evidence, not a mutable status flag.
+Current eligibility is recalculated dynamically from its observation,
+validation run and all peers. An assessment is current only under the exact M6
+policy version, for a non-superseded observation included in the frozen
+validation, with a PASSED replay and complete independent provenance.
+
+Direct extraction eligibility additionally requires exact deterministic
+`evidence-extraction-v3` replay, panel/Schema/unit/claim agreement and a valid
+frozen input manifest. Historical v2 extraction contracts, legacy rows,
+unsupported validation rules, non-deterministic extraction, manual revision
+attestation and calculation engines outside the empty M6 allowlist fail closed
+with explicit reason codes. A human decision is never silently treated as a
+substitute for these proofs.
 
 ## Human review and revision history
 
@@ -111,6 +166,12 @@ non-empty rationale payload and actor.
 Authentication is not yet part of V2. `decided_by` and `revised_by` are
 self-asserted audit labels, clearly identified as such in the UI; they are not
 cryptographic identity proof.
+
+Manual revisions require finite schema-valid numeric values, unchanged
+unit/currency/time/geography/dimension scope and explicit evidence claims when
+the value changes. The revision chain remains fully visible, but M6 intentionally
+does not mark a manual semantic correction trusted because it has no replayable
+human-attestation contract yet.
 
 ## L2 use policy
 

@@ -10,10 +10,6 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
-from app.core.database import Base
-from app.models import sql  # noqa: F401
-
-
 revision = "0001_v1_evidence_chain"
 down_revision = "8a9c3d4e5f60"
 branch_labels = None
@@ -22,8 +18,10 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    # Preserve the V1 local schema alongside V2 metadata on fresh databases.
-    Base.metadata.create_all(bind=bind)
+    # Never call the live application's full metadata from a historical
+    # migration: later V2 models would be created ahead of their own revisions.
+    # The baseline already creates the V1 tables; this revision only adds the
+    # explicitly declared compatibility columns and evidence table below.
 
     inspector = inspect(bind)
     raw_columns = {

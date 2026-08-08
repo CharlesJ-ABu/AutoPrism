@@ -38,6 +38,53 @@ class ModelProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["evidence"]["vehicles"], "fragment-1")
         self.assertEqual(response.provider, "deterministic")
 
+    async def test_deterministic_mapping_rejects_constants(self):
+        with self.assertRaisesRegex(ValueError, "constants are forbidden"):
+            DeterministicMappingProvider(
+                {
+                    "field_mappings": {"revenue": "reported_revenue"},
+                    "constants": {"revenue": 999},
+                }
+            )
+
+    async def test_deterministic_mapping_does_not_coerce_values(self):
+        provider = DeterministicMappingProvider(
+            {
+                "field_mappings": {
+                    "vehicle_count": {
+                        "path": "Count",
+                        "transform": "integer",
+                    }
+                }
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "not already an integer"):
+            await provider.generate(
+                system_prompt="",
+                user_prompt=(
+                    'Evidence fragments:\n[{"evidence_fragment_id":"fragment-1",'
+                    '"text":"{\\"Count\\":\\"2\\"}"}]'
+                ),
+                output_schema={},
+            )
+
+    async def test_deterministic_mapping_rejects_unavailable_source_paths(self):
+        for path in ("missing", "Results.3", "Results.not-an-index"):
+            with self.subTest(path=path):
+                provider = DeterministicMappingProvider(
+                    {"field_mappings": {"value": path}}
+                )
+                with self.assertRaisesRegex(ValueError, "source path"):
+                    await provider.generate(
+                        system_prompt="",
+                        user_prompt=(
+                            'Evidence fragments:\n'
+                            '[{"evidence_fragment_id":"fragment-1",'
+                            '"text":"{\\"Results\\":[1]}"}]'
+                        ),
+                        output_schema={},
+                    )
+
     async def test_openai_compatible_adapter(self):
         transport = httpx.MockTransport(
             lambda request: httpx.Response(

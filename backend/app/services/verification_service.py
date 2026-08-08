@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.evidence import (
-    execute_calculation,
+    CalculationOperation,
+    execute_normalized_calculation,
+    normalize_calculation_contract,
     sha256_json,
     validate_numeric_sources,
 )
 from app.models.evidence import (
     CalculationRun,
+    EvidenceArtifact,
     EvidenceFragment,
     MetricObservation,
+    ObservationEvidenceLink,
+    ObservationEvidenceSet,
     ReviewCase,
     SourceSnapshot,
     TrustState,
@@ -22,17 +29,174 @@ from app.models.evidence import (
 )
 
 
+VALIDATION_RULE_VERSION = "numeric-v2-source-artifact-publisher"
+
+
+def observation_numeric_values(
+    observations: list[MetricObservation],
+) -> list[Any]:
+    """Read canonical numeric values without trusting historical JSON shape."""
+
+    values: list[Any] = []
+    for observation in observations:
+        normalized = observation.normalized_value
+        if (
+            not isinstance(normalized, dict)
+            or "value" not in normalized
+            or normalized["value"] is None
+        ):
+            raise ValueError(
+                f"observation {observation.id} lacks a canonical normalized value"
+            )
+        values.append(normalized["value"])
+    return values
+
+
+def _canonical_scope_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    # Database timestamps use the project's frozen naive-UTC convention. An
+    # aware value can still arrive before a flush, so normalize it to that same
+    # convention instead of letting equivalent instants hash differently.
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.isoformat(timespec="microseconds")
+
+
+def validation_scope_payload(observation: MetricObservation) -> dict[str, Any]:
+    """Return the complete immutable comparison scope used by the V2 rule."""
+
+    return {
+        "panel_version_key": observation.panel_version_key,
+        "schema_version": observation.schema_version,
+        "metric_key": observation.metric_key,
+        "unit": observation.unit,
+        "currency": observation.currency,
+        "dimensions": observation.dimensions,
+        "geographic_scope": observation.geographic_scope,
+        "observed_at": _canonical_scope_datetime(observation.observed_at),
+        "period_start": _canonical_scope_datetime(observation.period_start),
+        "period_end": _canonical_scope_datetime(observation.period_end),
+    }
+
+
+def validation_comparison_key(observation: MetricObservation) -> str:
+    return sha256_json(validation_scope_payload(observation))
+
+
+def ensure_comparable_observations(
+    observations: list[MetricObservation],
+) -> None:
+    if not observations:
+        raise ValueError("at least one observation is required")
+    first_scope = validation_scope_payload(observations[0])
+    if any(validation_scope_payload(item) != first_scope for item in observations[1:]):
+        raise ValueError("observations are not comparable")
+
+
+def evaluate_validation_rule(
+    observations: list[MetricObservation],
+    *,
+    absolute_tolerance: Any,
+    relative_tolerance: Any,
+    provenance: dict[str, Any],
+) -> tuple[VerificationState, dict[str, Any]]:
+    """Evaluate the frozen numeric rule from observations and resolved provenance."""
+
+    numeric_result = validate_numeric_sources(
+        observation_numeric_values(observations),
+        absolute_tolerance=absolute_tolerance,
+        relative_tolerance=relative_tolerance,
+    )
+    provenance_issues = provenance["provenance_issues"]
+    independent_source_count = provenance["independent_source_count"]
+    independent_artifact_count = provenance["independent_artifact_count"]
+    independent_publisher_count = provenance["independent_publisher_count"]
+    if provenance_issues or min(
+        independent_source_count,
+        independent_artifact_count,
+        independent_publisher_count,
+    ) < 2:
+        state = VerificationState.NEEDS_REVIEW
+    else:
+        state = {
+            "passed": VerificationState.PASSED,
+            "conflict": VerificationState.CONFLICT,
+            "needs_review": VerificationState.NEEDS_REVIEW,
+        }[numeric_result.state]
+    result = {
+        "minimum": (
+            str(numeric_result.minimum)
+            if numeric_result.minimum is not None
+            else None
+        ),
+        "maximum": (
+            str(numeric_result.maximum)
+            if numeric_result.maximum is not None
+            else None
+        ),
+        "spread": (
+            str(numeric_result.spread)
+            if numeric_result.spread is not None
+            else None
+        ),
+        "relative_spread": (
+            str(numeric_result.relative_spread)
+            if numeric_result.relative_spread is not None
+            else None
+        ),
+        "independent_source_count": independent_source_count,
+        "independent_artifact_count": independent_artifact_count,
+        "independent_publisher_count": independent_publisher_count,
+        "source_identities": provenance["source_identities"],
+        "artifact_identities": provenance["artifact_identities"],
+        "publisher_identities": provenance["publisher_identities"],
+        "observation_source_identities": provenance[
+            "observation_source_identities"
+        ],
+        "observation_artifact_identities": provenance[
+            "observation_artifact_identities"
+        ],
+        "observation_publisher_identities": provenance[
+            "observation_publisher_identities"
+        ],
+        "provenance_issues": provenance_issues,
+    }
+    return state, result
+
+
 class VerificationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def validate_observations(
+    async def _evidence_links(
+        self,
+        observations: list[MetricObservation],
+    ) -> dict[uuid.UUID, list[ObservationEvidenceLink]]:
+        observation_ids = [item.id for item in observations]
+        rows = (
+            await self.db.execute(
+                select(ObservationEvidenceLink)
+                .where(ObservationEvidenceLink.observation_id.in_(observation_ids))
+                .order_by(
+                    ObservationEvidenceLink.observation_id,
+                    ObservationEvidenceLink.ordinal,
+                )
+            )
+        ).scalars().all()
+        output: dict[uuid.UUID, list[ObservationEvidenceLink]] = {
+            observation_id: [] for observation_id in observation_ids
+        }
+        for row in rows:
+            output[row.observation_id].append(row)
+        return output
+
+    async def _load_observations(
         self,
         observation_ids: list[uuid.UUID],
-        *,
-        absolute_tolerance: Any,
-        relative_tolerance: Any,
-    ) -> tuple[ValidationRun, ReviewCase | None]:
+    ) -> list[MetricObservation]:
+        if not observation_ids:
+            raise ValueError("at least one observation is required")
         if len(set(observation_ids)) != len(observation_ids):
             raise ValueError("observation_ids must not contain duplicates")
         observations = [
@@ -41,102 +205,284 @@ class VerificationService:
         ]
         if any(item is None for item in observations):
             raise LookupError("one or more observations do not exist")
-        first = observations[0]
-        if any(
-            item.panel_version_key != first.panel_version_key
-            or item.schema_version != first.schema_version
-            or item.metric_key != first.metric_key
-            or item.unit != first.unit
-            or item.currency != first.currency
-            or item.dimensions != first.dimensions
-            or item.geographic_scope != first.geographic_scope
-            or item.observed_at != first.observed_at
-            or item.period_start != first.period_start
-            or item.period_end != first.period_end
-            for item in observations[1:]
+        return observations
+
+    async def resolve_validation_provenance(
+        self,
+        observations: list[MetricObservation],
+    ) -> dict[str, Any]:
+        """Resolve source, artifact and publisher identity without inference.
+
+        Evidence links are claim-level. The same physical fragment may support
+        several claims, so fragment identity is deliberately de-duplicated
+        before resolving its snapshot and artifact.
+        """
+
+        links_by_observation = await self._evidence_links(observations)
+        observation_ids = [item.id for item in observations]
+        evidence_sets = (
+            await self.db.execute(
+                select(ObservationEvidenceSet).where(
+                    ObservationEvidenceSet.observation_id.in_(observation_ids)
+                )
+            )
+        ).scalars().all()
+        evidence_set_by_observation = {
+            item.observation_id: item for item in evidence_sets
+        }
+        fragment_ids = {
+            link.evidence_fragment_id
+            for links in links_by_observation.values()
+            for link in links
+        }
+        fragment_rows = (
+            await self.db.execute(
+                select(EvidenceFragment, SourceSnapshot, EvidenceArtifact)
+                .join(
+                    SourceSnapshot,
+                    EvidenceFragment.snapshot_id == SourceSnapshot.id,
+                )
+                .join(
+                    EvidenceArtifact,
+                    SourceSnapshot.artifact_id == EvidenceArtifact.id,
+                )
+                .where(EvidenceFragment.id.in_(fragment_ids))
+            )
+        ).all()
+        evidence_by_fragment = {
+            fragment.id: (fragment, snapshot, artifact)
+            for fragment, snapshot, artifact in fragment_rows
+        }
+        observation_sources: dict[str, list[str]] = {}
+        observation_artifacts: dict[str, list[str]] = {}
+        observation_publishers: dict[str, list[str]] = {}
+        provenance_issues: list[dict[str, Any]] = []
+        resolved_sources: list[str] = []
+        resolved_artifacts: list[str] = []
+        resolved_publishers: list[str] = []
+
+        for observation in observations:
+            observation_key = str(observation.id)
+            links = links_by_observation[observation.id]
+            evidence_set = evidence_set_by_observation.get(observation.id)
+            primary_links = [item for item in links if item.role == "primary"]
+            expected_ordinals = list(range(len(links)))
+            if not (
+                evidence_set is not None
+                and evidence_set.citation_count == len(links)
+                and bool(links)
+                and [item.ordinal for item in links] == expected_ordinals
+                and len(primary_links) == 1
+                and primary_links[0].ordinal == 0
+                and primary_links[0].evidence_fragment_id
+                == observation.evidence_fragment_id
+            ):
+                provenance_issues.append(
+                    {
+                        "observation_id": observation_key,
+                        "reason": "FROZEN_EVIDENCE_SET_INCOMPLETE",
+                    }
+                )
+
+            unique_fragment_ids = {
+                item.evidence_fragment_id for item in links
+            }
+            resolved_evidence = [
+                evidence_by_fragment.get(fragment_id)
+                for fragment_id in unique_fragment_ids
+            ]
+            if (
+                not unique_fragment_ids
+                or any(item is None for item in resolved_evidence)
+            ):
+                provenance_issues.append(
+                    {
+                        "observation_id": observation_key,
+                        "reason": "EVIDENCE_FRAGMENT_CONTEXT_MISSING",
+                    }
+                )
+            complete_evidence = [
+                item for item in resolved_evidence if item is not None
+            ]
+            source_ids = {
+                snapshot.source_definition_id
+                for _, snapshot, _ in complete_evidence
+                if snapshot.source_definition_id is not None
+            }
+            artifacts = {artifact.sha256 for _, _, artifact in complete_evidence}
+            if any(
+                snapshot.source_definition_id is None
+                for _, snapshot, _ in complete_evidence
+            ):
+                provenance_issues.append(
+                    {
+                        "observation_id": observation_key,
+                        "reason": "SOURCE_DEFINITION_REQUIRED",
+                    }
+                )
+
+            publishers: set[str] = set()
+            missing_publisher_identity = False
+            for _, snapshot, _ in complete_evidence:
+                source_metadata = (
+                    snapshot.source_metadata
+                    if isinstance(snapshot.source_metadata, dict)
+                    else {}
+                )
+                publisher = source_metadata.get("publisher_identity")
+                if not isinstance(publisher, str) or not publisher.strip():
+                    missing_publisher_identity = True
+                    continue
+                # Publisher identity is a canonical identifier, not a label.
+                # Case and surrounding whitespace cannot manufacture
+                # independence under this frozen rule.
+                publishers.add(publisher.strip().casefold())
+            if missing_publisher_identity:
+                provenance_issues.append(
+                    {
+                        "observation_id": observation_key,
+                        "reason": "PUBLISHER_IDENTITY_REQUIRED",
+                    }
+                )
+
+            sources = sorted(str(item) for item in source_ids)
+            artifact_identities = sorted(artifacts)
+            publisher_identities = sorted(publishers)
+            observation_sources[observation_key] = sources
+            observation_artifacts[observation_key] = artifact_identities
+            observation_publishers[observation_key] = publisher_identities
+            if (
+                len(sources) != 1
+                or len(artifact_identities) != 1
+                or len(publisher_identities) != 1
+            ):
+                provenance_issues.append(
+                    {
+                        "observation_id": observation_key,
+                        "reason": (
+                            "OBSERVATION_MUST_RESOLVE_TO_ONE_SOURCE_"
+                            "ARTIFACT_PUBLISHER"
+                        ),
+                        "source_count": len(sources),
+                        "artifact_count": len(artifact_identities),
+                        "publisher_count": len(publisher_identities),
+                    }
+                )
+                continue
+            resolved_sources.append(sources[0])
+            resolved_artifacts.append(artifact_identities[0])
+            resolved_publishers.append(publisher_identities[0])
+
+        def duplicate_identities(values: list[str]) -> list[str]:
+            return sorted({item for item in values if values.count(item) > 1})
+
+        for identity_kind, values in (
+            ("SOURCE", resolved_sources),
+            ("ARTIFACT", resolved_artifacts),
+            ("PUBLISHER", resolved_publishers),
         ):
-            raise ValueError("observations are not comparable")
-        fragments = [
-            await self.db.get(EvidenceFragment, item.evidence_fragment_id)
-            for item in observations
-        ]
-        snapshots = [
-            await self.db.get(SourceSnapshot, fragment.snapshot_id)
-            for fragment in fragments
-        ]
-        source_identities = [
-            (
-                str(snapshot.source_definition_id)
-                if snapshot.source_definition_id
-                else f"source_key:{snapshot.source_key}"
-            )
-            for snapshot in snapshots
-        ]
-        if len(set(source_identities)) < 2:
-            result = validate_numeric_sources(
-                [observations[0].normalized_value["value"]],
-                absolute_tolerance=absolute_tolerance,
-                relative_tolerance=relative_tolerance,
-            )
-            state = VerificationState.NEEDS_REVIEW
-        else:
-            result = validate_numeric_sources(
-                [item.normalized_value["value"] for item in observations],
-                absolute_tolerance=absolute_tolerance,
-                relative_tolerance=relative_tolerance,
-            )
-            state = {
-                "passed": VerificationState.PASSED,
-                "conflict": VerificationState.CONFLICT,
-                "needs_review": VerificationState.NEEDS_REVIEW,
-            }[result.state]
+            duplicates = duplicate_identities(values)
+            if duplicates:
+                provenance_issues.append(
+                    {
+                        "reason": (
+                            f"CROSS_OBSERVATION_{identity_kind}_NOT_UNIQUE"
+                        ),
+                        "identities": duplicates,
+                    }
+                )
+
+        source_identities = sorted(set(resolved_sources))
+        artifact_identities = sorted(set(resolved_artifacts))
+        publisher_identities = sorted(set(resolved_publishers))
+        return {
+            "independent_source_count": len(source_identities),
+            "independent_artifact_count": len(artifact_identities),
+            "independent_publisher_count": len(publisher_identities),
+            "source_identities": source_identities,
+            "artifact_identities": artifact_identities,
+            "publisher_identities": publisher_identities,
+            "observation_source_identities": observation_sources,
+            "observation_artifact_identities": observation_artifacts,
+            "observation_publisher_identities": observation_publishers,
+            "provenance_issues": provenance_issues,
+        }
+
+    async def replay_validation(self, validation: ValidationRun) -> dict[str, Any]:
+        """Recompute a frozen validation without trusting its stored result."""
+
+        if not isinstance(validation.observation_ids, list):
+            raise ValueError("validation observation_ids must be an array")
+        try:
+            observation_ids = [
+                uuid.UUID(str(item)) for item in validation.observation_ids
+            ]
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError("validation contains an invalid observation id") from exc
+        observations = await self._load_observations(observation_ids)
+        ensure_comparable_observations(observations)
+        if not isinstance(validation.tolerance, dict) or set(
+            validation.tolerance
+        ) != {"absolute", "relative"}:
+            raise ValueError("validation tolerance contract is incomplete")
+        provenance = await self.resolve_validation_provenance(observations)
+        expected_state, expected_result = evaluate_validation_rule(
+            observations,
+            absolute_tolerance=validation.tolerance["absolute"],
+            relative_tolerance=validation.tolerance["relative"],
+            provenance=provenance,
+        )
+        return {
+            "observations": observations,
+            "expected_comparison_key": validation_comparison_key(observations[0]),
+            "expected_state": expected_state,
+            "expected_result": expected_result,
+            "provenance": provenance,
+        }
+
+    async def validate_observations(
+        self,
+        observation_ids: list[uuid.UUID],
+        *,
+        absolute_tolerance: Any,
+        relative_tolerance: Any,
+    ) -> tuple[ValidationRun, ReviewCase | None]:
+        observations = await self._load_observations(observation_ids)
+        first = observations[0]
+        ensure_comparable_observations(observations)
+        provenance = await self.resolve_validation_provenance(observations)
+        state, result = evaluate_validation_rule(
+            observations,
+            absolute_tolerance=absolute_tolerance,
+            relative_tolerance=relative_tolerance,
+            provenance=provenance,
+        )
         run = ValidationRun(
-            comparison_key=sha256_json(
-                {
-                    "panel_version_key": first.panel_version_key,
-                    "schema_version": first.schema_version,
-                    "metric_key": first.metric_key,
-                    "unit": first.unit,
-                    "currency": first.currency,
-                    "dimensions": first.dimensions,
-                    "geographic_scope": first.geographic_scope,
-                    "observed_at": first.observed_at,
-                    "period_start": first.period_start,
-                    "period_end": first.period_end,
-                }
-            ),
+            comparison_key=validation_comparison_key(first),
             observation_ids=[str(item.id) for item in observations],
-            rule_version="numeric-v1",
+            rule_version=VALIDATION_RULE_VERSION,
             tolerance={
                 "absolute": str(absolute_tolerance),
                 "relative": str(relative_tolerance),
             },
-            result={
-                "minimum": str(result.minimum) if result.minimum is not None else None,
-                "maximum": str(result.maximum) if result.maximum is not None else None,
-                "spread": str(result.spread) if result.spread is not None else None,
-                "relative_spread": (
-                    str(result.relative_spread)
-                    if result.relative_spread is not None
-                    else None
-                ),
-                "independent_source_count": len(set(source_identities)),
-                "source_identities": source_identities,
-            },
+            result=result,
             state=state,
         )
         self.db.add(run)
         await self.db.flush()
         review = None
         if state in {VerificationState.CONFLICT, VerificationState.NEEDS_REVIEW}:
+            reason_codes = []
+            if state is VerificationState.CONFLICT:
+                reason_codes.append("SOURCE_CONFLICT")
+            if provenance["provenance_issues"]:
+                reason_codes.append("AMBIGUOUS_OBSERVATION_EVIDENCE_SCOPE")
+            if state is VerificationState.NEEDS_REVIEW:
+                reason_codes.append("INSUFFICIENT_INDEPENDENT_SOURCES")
             review = ReviewCase(
                 validation_run_id=run.id,
                 observation_ids=[str(item.id) for item in observations],
-                reason_codes=[
-                    "SOURCE_CONFLICT"
-                    if state is VerificationState.CONFLICT
-                    else "INSUFFICIENT_INDEPENDENT_SOURCES"
-                ],
+                reason_codes=reason_codes,
             )
             self.db.add(review)
             await self.db.flush()
@@ -146,21 +492,20 @@ class VerificationService:
     async def calculate(
         self,
         *,
-        operation: str,
+        operation: CalculationOperation | str,
         input_observation_ids: list[uuid.UUID],
         output_metric_key: str,
         output_unit: str | None,
         parameters: dict[str, Any] | None = None,
     ) -> tuple[MetricObservation, CalculationRun]:
-        parameters = parameters or {}
-        if len(set(input_observation_ids)) != len(input_observation_ids):
-            raise ValueError("input_observation_ids must not contain duplicates")
-        observations = [
-            await self.db.get(MetricObservation, observation_id)
-            for observation_id in input_observation_ids
-        ]
-        if any(item is None for item in observations):
-            raise LookupError("one or more input observations do not exist")
+        observations = await self._load_observations(input_observation_ids)
+        contract = normalize_calculation_contract(
+            operation,
+            observation_numeric_values(observations),
+            parameters,
+        )
+        normalized_operation = contract.operation
+        normalized_parameters = contract.parameters
         first = observations[0]
         if any(
             item.panel_version_key != first.panel_version_key
@@ -175,56 +520,112 @@ class VerificationService:
         ):
             raise ValueError("calculation inputs do not share one comparison scope")
         units = {item.unit for item in observations}
-        same_unit_operations = {"add", "subtract", "percent_change", "weighted_average"}
-        if operation in same_unit_operations and len(units) != 1:
-            raise ValueError(f"{operation} requires inputs with the same unit")
-        if operation in {"add", "subtract", "weighted_average"} and output_unit != first.unit:
-            raise ValueError(f"{operation} output_unit must match the input unit")
-        if operation == "percent_change" and output_unit != "percent":
+        same_unit_operations = {
+            CalculationOperation.ADD,
+            CalculationOperation.SUBTRACT,
+            CalculationOperation.PERCENT_CHANGE,
+            CalculationOperation.WEIGHTED_AVERAGE,
+        }
+        if normalized_operation in same_unit_operations and len(units) != 1:
+            raise ValueError(
+                f"{normalized_operation.value} requires inputs with the same unit"
+            )
+        if normalized_operation in {
+            CalculationOperation.ADD,
+            CalculationOperation.SUBTRACT,
+            CalculationOperation.WEIGHTED_AVERAGE,
+        } and output_unit != first.unit:
+            raise ValueError(
+                f"{normalized_operation.value} output_unit must match the input unit"
+            )
+        if (
+            normalized_operation is CalculationOperation.PERCENT_CHANGE
+            and output_unit != "percent"
+        ):
             raise ValueError("percent_change output_unit must be percent")
-        if operation in {"multiply", "divide"}:
+        if normalized_operation in {
+            CalculationOperation.MULTIPLY,
+            CalculationOperation.DIVIDE,
+        }:
             if not output_unit:
-                raise ValueError(f"{operation} requires an explicit output_unit")
-            if not parameters.get("unit_plan"):
-                raise ValueError(f"{operation} requires an explicit unit_plan")
-        result = execute_calculation(
-            operation,
-            [item.normalized_value["value"] for item in observations],
-            weights=parameters.get("weights"),
-        )
+                raise ValueError(
+                    f"{normalized_operation.value} requires an explicit output_unit"
+                )
+        result = execute_normalized_calculation(contract)
+        links_by_observation = await self._evidence_links(observations)
+        evidence_inputs: list[tuple[uuid.UUID, uuid.UUID]] = []
+        seen_evidence_inputs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for observation in observations:
+            links = links_by_observation[observation.id]
+            fragment_ids = (
+                [link.evidence_fragment_id for link in links]
+                if links
+                else [observation.evidence_fragment_id]
+            )
+            for fragment_id in fragment_ids:
+                evidence_input = (fragment_id, observation.id)
+                if evidence_input not in seen_evidence_inputs:
+                    evidence_inputs.append(evidence_input)
+                    seen_evidence_inputs.add(evidence_input)
+        if not evidence_inputs:
+            raise ValueError("calculation inputs have no evidence fragments")
         output = MetricObservation(
             panel_version_key=first.panel_version_key,
             schema_version=first.schema_version,
             metric_key=output_metric_key,
-            evidence_fragment_id=first.evidence_fragment_id,
+            evidence_fragment_id=evidence_inputs[0][0],
             raw_value={
                 "origin": "deterministic_calculation",
-                "operation": operation,
+                "operation": normalized_operation.value,
                 "input_observation_ids": [
                     str(item.id) for item in observations
                 ],
             },
             normalized_value={"value": str(result.value)},
             unit=output_unit,
+            currency=first.currency,
+            observed_at=first.observed_at,
+            period_start=first.period_start,
+            period_end=first.period_end,
             dimensions=first.dimensions,
             geographic_scope=first.geographic_scope,
             trust_state=TrustState.UNVERIFIED,
         )
         self.db.add(output)
         await self.db.flush()
+        self.db.add(
+            ObservationEvidenceSet(
+                observation_id=output.id,
+                citation_count=len(evidence_inputs),
+            )
+        )
+        await self.db.flush()
+        for ordinal, (fragment_id, input_observation_id) in enumerate(
+            evidence_inputs
+        ):
+            self.db.add(
+                ObservationEvidenceLink(
+                    observation_id=output.id,
+                    ordinal=ordinal,
+                    evidence_fragment_id=fragment_id,
+                    role="primary" if ordinal == 0 else "calculation_input",
+                    claim_key=output_metric_key,
+                    field_path=f"input_observation:{input_observation_id}",
+                )
+            )
         replay_payload = {
-            "operation": operation,
+            "operation": normalized_operation.value,
             "input_observation_ids": [str(item.id) for item in observations],
             "input_values": [item.normalized_value for item in observations],
-            "parameters": parameters,
+            "parameters": normalized_parameters,
             "result": str(result.value),
             "engine_version": "decimal-v1",
         }
         calculation = CalculationRun(
             output_observation_id=output.id,
-            operation=operation,
+            operation=normalized_operation.value,
             input_observation_ids=[str(item.id) for item in observations],
-            parameters=parameters,
+            parameters=normalized_parameters,
             result={"value": str(result.value), "unit": output_unit},
             engine_version="decimal-v1",
             replay_hash=sha256_json(replay_payload),

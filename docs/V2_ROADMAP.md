@@ -2,13 +2,18 @@
 
 ## V2.0 release status
 
-The local-first V2.0 milestone is complete on branch `v2`. The current release
-includes the V1-continuity cockpit, immutable dashboard lifecycle, compliant
-direct-source operations, auditable INFO/calculation/validation/review
-workflows, append-only trust eligibility and stored-input-only deterministic L2.
-See [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for gates and known
-limitations. Deferred work below does not block the truthful local release and
-is not represented as complete in the UI.
+The M5 local-first V2 release is complete on branch `v2`. M6 backend, data,
+migration and frontend static gates are complete, but the M6 release closeout is
+not: the current environment has no browser runtime, so new same-size V1/V2
+screenshots, responsive/console checks and visual interaction smoke remain
+pending. Historical screenshots are not accepted as current M6 evidence.
+
+M6 includes the V1-continuity cockpit, immutable dashboard lifecycle, compliant
+direct-source operations, exact observation/extraction lineage, auditable
+INFO/validation/review workflows, append-only dynamically replayed trust
+eligibility and stored-input-only deterministic L2. See
+[V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
+known limitations. M7 unit/currency/error work is not represented as complete.
 
 ## Status at branch creation
 
@@ -52,13 +57,14 @@ Google discovery remains pending; direct registered sources are operational.
   fields, time/geography, aggregation, and visualization mappings.
 - Introduce provider-neutral model adapters and structured-output validation.
 - Require every extracted core field to carry an evidence locator.
-- Add deterministic units, currency, and time-basis normalization.
+- Freeze explicit unit, currency and time-basis scope and reject implicit
+  conversion; the general deterministic conversion registry is M7 work.
 - Execute model-proposed calculations with a restricted calculation engine.
 - Add cross-source comparison policies and human review queues.
 - Preserve corrections through `supersedes_id`.
 
-Exit: every trusted number can be traced, recalculated, and independently
-reviewed.
+Exit: every number admitted by the current trust policy can be traced,
+replayed and independently validated.
 
 General unit/currency conversion tables remain pending. Deterministic decimal
 calculations, tolerance checks, review cases, append-only decisions, and
@@ -67,13 +73,15 @@ schema-bound extraction are operational.
 ## Phase 3 — Automotive proof (complete)
 
 - Select three automotive panels with authoritative public sources.
-- Rebuild their INFO contracts and visualizations against verified data.
+- Rebuild their INFO contracts and visualizations against real-source,
+  evidence-backed, Schema-valid data.
 - Ensure L2 analyzes only eligible stored data and never browses.
 - Add historical snapshot labels and provenance UI.
 
 Exit: three panels run end-to-end on real data in Docker.
 
-Completed with three live NHTSA API panels and a provenance UI. The L2 service
+Completed with three live NHTSA API panels and a provenance UI. Their outputs
+are real-source and Schema-valid, not automatically trusted. The L2 service
 now accepts only current ELIGIBLE observation heads. The current reference
 dataset lacks independent-source validation, so its UI truthfully reports L2
 unavailable instead of generating an unverified insight.
@@ -94,6 +102,38 @@ Exit: users can create, save, switch, and audit multiple research dashboards.
 Title-to-proposal, editable structured JSON, immutable save, dashboard
 switching, and metric/table/provenance rendering are operational. The full UI
 DSL component registry and isolated custom React runtime remain pending.
+
+## M6 — Exact lineage and trust replay (implementation complete; visual gate pending)
+
+- Add normalized multi-claim/multi-fragment observation evidence sets.
+- Bind direct observations to exact extraction run, record ordinal and field
+  path.
+- Freeze `evidence-extraction-v3` ordered input manifests and replay hashes.
+- Require deterministic extraction replay for trust eligibility.
+- Validate independent source, artifact and snapshot-frozen publisher identity
+  under `numeric-v2-source-artifact-publisher`.
+- Dynamically recheck every validation peer and assessment under
+  `trust-eligibility-v3-validation-replay`.
+- Upgrade both fresh and backed-up populated databases through migration `0005`.
+- Backfill only unique exact matches; preserve the real six-observation result
+  as 3 `backfill_exact` and 3 unresolved without guessing.
+- Pass the final disposable-PostgreSQL backend suite 39/39 and frontend
+  typecheck/build/dependency audit.
+
+Exit status: implementation/data/static gates pass. New desktop/mobile
+screenshots, console inspection and visual interaction smoke remain blocked by
+the unavailable browser runtime and must close before M6 release publication.
+
+## M7 — Units, currency and error semantics (not started)
+
+- Add deterministic unit, currency and time-basis conversion registries.
+- Freeze conversion formulas, rates, effective timestamps and engine versions.
+- Define deterministic precision/rounding and error-propagation contracts.
+- Add a trusted calculation-engine version only after replay and failure tests
+  cover the complete conversion/error path.
+
+Exit: derived observations can become trust eligible without implicit
+conversion, hidden rounding or unverifiable uncertainty.
 
 ## Phase 5 — SaaS branch (not started)
 

@@ -49,6 +49,22 @@ class PanelSchemaTests(unittest.TestCase):
         )
         self.assertEqual(len(issues), 1)
 
+    def test_boolean_schema_fails_closed_without_crashing(self):
+        issues = validate_panel_payload(False, {})
+        self.assertEqual(len(issues), 1)
+        self.assertIn("schema must be an object", issues[0].message)
+
+    def test_non_finite_payload_numbers_are_rejected(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                issues = validate_panel_payload(
+                    VALID_SCHEMA,
+                    {"brand": "BYD", "sales": 42, "share": value},
+                )
+                self.assertTrue(
+                    any("must be finite" in issue.message for issue in issues)
+                )
+
     def test_safe_ui_dsl_is_bound_to_schema_fields(self):
         schema = {
             **VALID_SCHEMA,

@@ -56,10 +56,10 @@ export function DashboardPanel({
         </div>
         <div>
           <strong>{metricNode?.label ?? metricField ?? '未配置指标'}</strong>
-          <span>LATEST IMMUTABLE SNAPSHOT</span>
+          <span>LATEST STRUCTURED OUTPUT</span>
         </div>
-        <Status tone={valid ? 'ok' : panel.extraction ? 'warning' : 'neutral'}>
-          {valid ? 'SCHEMA VALID' : panel.extraction ? 'VALIDATION ISSUE' : 'NO EXTRACTION'}
+        <Status tone={valid ? 'warning' : panel.extraction ? 'danger' : 'neutral'}>
+          {valid ? 'UNVERIFIED DATA' : panel.extraction ? 'OUTPUT INVALID' : 'NO EXTRACTION'}
         </Status>
       </div>
       {tableNode && visibleRecords.length > 0 ? (
