@@ -614,7 +614,9 @@ def validate_observation_contract(
     return tuple(issues)
 
 
-ALLOWED_UI_DSL_TYPES = frozenset({"stack", "metric", "table", "provenance"})
+ALLOWED_UI_DSL_TYPES = frozenset(
+    {"stack", "metric", "table", "chart", "timeline", "provenance"}
+)
 
 
 def validate_ui_dsl(
@@ -648,6 +650,11 @@ def validate_ui_dsl(
             )
             return
         if node_type == "stack":
+            unknown = set(node) - {"type", "version", "children"}
+            if unknown:
+                issues.append(
+                    SchemaIssue(path, "stack contains unsupported properties")
+                )
             children = node.get("children")
             if not isinstance(children, list) or not children:
                 issues.append(
@@ -662,7 +669,7 @@ def validate_ui_dsl(
                 SchemaIssue(path, f"{node_type} nodes cannot contain children")
             )
 
-        if node_type in {"metric", "table"}:
+        if node_type in {"metric", "table", "chart", "timeline"}:
             field = node.get("field")
             if not isinstance(field, str) or not field:
                 issues.append(
@@ -678,14 +685,42 @@ def validate_ui_dsl(
                     )
                 )
                 return
-            if node_type == "table":
+            if node_type in {"table", "chart", "timeline"}:
                 if definition.get("type") != "array":
                     issues.append(
                         SchemaIssue(
                             f"{path}.field",
-                            "table field must reference an array property",
+                            f"{node_type} field must reference an array property",
                         )
                     )
+                    return
+                items = definition.get("items")
+                item_properties = (
+                    items.get("properties", {}) if isinstance(items, dict) else {}
+                )
+            else:
+                item_properties = {}
+
+            if node_type == "metric":
+                if definition.get("type") not in {"number", "integer"}:
+                    issues.append(
+                        SchemaIssue(f"{path}.field", "metric field must be numeric")
+                    )
+                declared_unit = node.get("unit")
+                schema_unit = definition.get("x-unit")
+                if declared_unit is not None and declared_unit != schema_unit:
+                    issues.append(
+                        SchemaIssue(
+                            f"{path}.unit",
+                            "metric unit must equal the frozen Schema x-unit",
+                        )
+                    )
+                if set(node) - {"type", "field", "label", "unit"}:
+                    issues.append(
+                        SchemaIssue(path, "metric contains unsupported properties")
+                    )
+
+            if node_type == "table":
                 columns = node.get("columns")
                 if not isinstance(columns, list) or not columns or not all(
                     isinstance(column, str) and column for column in columns
@@ -697,12 +732,6 @@ def validate_ui_dsl(
                         )
                     )
                 else:
-                    items = definition.get("items")
-                    item_properties = (
-                        items.get("properties", {})
-                        if isinstance(items, dict)
-                        else {}
-                    )
                     for column in columns:
                         if column not in item_properties:
                             issues.append(
@@ -711,6 +740,152 @@ def validate_ui_dsl(
                                     f"column {column!r} is not defined by array items",
                                 )
                             )
+                page_size = node.get("page_size", 20)
+                if (
+                    isinstance(page_size, bool)
+                    or not isinstance(page_size, int)
+                    or not 1 <= page_size <= 100
+                ):
+                    issues.append(
+                        SchemaIssue(
+                            f"{path}.page_size",
+                            "must be an integer from 1 to 100",
+                        )
+                    )
+                if set(node) - {"type", "field", "columns", "page_size"}:
+                    issues.append(
+                        SchemaIssue(path, "table contains unsupported properties")
+                    )
+
+            if node_type == "chart":
+                variant = node.get("variant")
+                if variant not in {"line", "bar", "area"}:
+                    issues.append(
+                        SchemaIssue(f"{path}.variant", "chart variant must be line, bar or area")
+                    )
+                for key, numeric in (("x_field", False), ("y_field", True)):
+                    item_field = node.get(key)
+                    item_definition = (
+                        item_properties.get(item_field)
+                        if isinstance(item_field, str)
+                        else None
+                    )
+                    if not isinstance(item_definition, dict):
+                        issues.append(
+                            SchemaIssue(f"{path}.{key}", "must name an array-item field")
+                        )
+                        continue
+                    allowed_types = (
+                        {"number", "integer"}
+                        if numeric
+                        else {"string", "number", "integer"}
+                    )
+                    if item_definition.get("type") not in allowed_types:
+                        issues.append(
+                            SchemaIssue(
+                                f"{path}.{key}",
+                                "field type is incompatible with chart axis",
+                            )
+                        )
+                    if numeric:
+                        has_unit = isinstance(item_definition.get("x-unit"), str)
+                        unitless = item_definition.get("x-unitless") is True
+                        if has_unit == unitless:
+                            issues.append(
+                                SchemaIssue(
+                                    f"{path}.{key}",
+                                    "numeric chart axis requires x-unit or x-unitless",
+                                )
+                            )
+                max_points = node.get("max_points", 80)
+                if (
+                    isinstance(max_points, bool)
+                    or not isinstance(max_points, int)
+                    or not 2 <= max_points <= 200
+                ):
+                    issues.append(
+                        SchemaIssue(
+                            f"{path}.max_points",
+                            "must be an integer from 2 to 200",
+                        )
+                    )
+                if set(node) - {
+                    "type", "field", "variant", "x_field", "y_field",
+                    "label", "max_points",
+                }:
+                    issues.append(
+                        SchemaIssue(path, "chart contains unsupported properties")
+                    )
+
+            if node_type == "timeline":
+                for key in ("time_field", "title_field"):
+                    item_field = node.get(key)
+                    item_definition = (
+                        item_properties.get(item_field)
+                        if isinstance(item_field, str)
+                        else None
+                    )
+                    if (
+                        not isinstance(item_definition, dict)
+                        or item_definition.get("type") != "string"
+                    ):
+                        issues.append(
+                            SchemaIssue(f"{path}.{key}", "must name a string array-item field")
+                        )
+                    elif key == "time_field" and item_definition.get("format") != "date-time":
+                        issues.append(
+                            SchemaIssue(
+                                f"{path}.{key}",
+                                "timeline time field requires date-time format",
+                            )
+                        )
+                value_field = node.get("value_field")
+                if value_field is not None:
+                    value_definition = item_properties.get(value_field)
+                    if (
+                        not isinstance(value_definition, dict)
+                        or value_definition.get("type") not in {"number", "integer"}
+                    ):
+                        issues.append(
+                            SchemaIssue(
+                                f"{path}.value_field",
+                                "must name a numeric array-item field",
+                            )
+                        )
+                max_items = node.get("max_items", 20)
+                if (
+                    isinstance(max_items, bool)
+                    or not isinstance(max_items, int)
+                    or not 1 <= max_items <= 100
+                ):
+                    issues.append(
+                        SchemaIssue(f"{path}.max_items", "must be an integer from 1 to 100")
+                    )
+                if set(node) - {
+                    "type", "field", "time_field", "title_field",
+                    "value_field", "label", "max_items",
+                }:
+                    issues.append(
+                        SchemaIssue(path, "timeline contains unsupported properties")
+                    )
+
+        if node_type == "provenance":
+            allowed = {
+                "type",
+                "show_source",
+                "show_locator",
+                "show_retrieved_at",
+                "show_artifact_hash",
+            }
+            if set(node) - allowed:
+                issues.append(
+                    SchemaIssue(path, "provenance contains unsupported properties")
+                )
+            for key in allowed - {"type"}:
+                if key in node and not isinstance(node[key], bool):
+                    issues.append(
+                        SchemaIssue(f"{path}.{key}", "provenance flags must be boolean")
+                    )
 
     walk(ui_dsl, "$.ui_dsl", 0)
     return tuple(issues)

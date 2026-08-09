@@ -22,8 +22,9 @@ is deliberately separate:
 
 - Google programmable search discovery with user-supplied configuration.
 - Scheduler UI and refresh-policy execution.
-- Expand safe UI DSL beyond metric/table/provenance to chart, timeline, map,
-  heatmap, radar, ticker, and network components.
+- Expand safe UI DSL beyond the implemented metric/table/single-series-chart/
+  timeline/provenance subset to map, heatmap, radar, ticker, network and
+  evidence-safe multi-series components.
 - Isolated custom React compile/preview/runtime with dependency allowlist,
   CSP, resource limits, and no ambient credentials.
 - Source-pool editing and deletion (creation/registration/collection are connected).

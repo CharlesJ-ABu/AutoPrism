@@ -5,6 +5,20 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M8 — Safe chart and timeline UI DSL (2026-08-10)
+
+- Expanded the non-executable UI DSL with Schema-bound line/bar/area charts and
+  evidence-date timelines. Unknown properties, invalid fields and misleading
+  metric units fail validation instead of being silently ignored.
+- Added dedicated responsive dashboard renderers with explicit no-data states.
+  They consume only stored array rows, reject non-finite chart values and never
+  synthesize points, trends, dates or events.
+- Passed the 55/55 disposable-PostgreSQL suite, frontend type/build and isolated
+  non-empty desktop/mobile browser smoke; restored Compose to the unchanged
+  real one-dashboard database after the visual check.
+- Kept multi-series, panel-level map and executable custom React outside the
+  accepted contract until their runtime and evidence semantics are complete.
+
 ### M7 — Bounded numeric, unit and currency replay (2026-08-10)
 
 - Added migration `0007_v2_numeric_conversion` with immutable canonical numeric

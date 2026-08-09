@@ -432,12 +432,20 @@ export interface Evidence {
 }
 
 export interface UiDslNode {
-  type: 'stack' | 'metric' | 'table' | 'provenance';
+  type: 'stack' | 'metric' | 'table' | 'chart' | 'timeline' | 'provenance';
   field?: string;
   label?: string;
   unit?: string;
   columns?: string[];
   page_size?: number;
+  variant?: 'line' | 'bar' | 'area';
+  x_field?: string;
+  y_field?: string;
+  max_points?: number;
+  time_field?: string;
+  title_field?: string;
+  value_field?: string;
+  max_items?: number;
   children?: UiDslNode[];
   [key: string]: unknown;
 }

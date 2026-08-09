@@ -68,6 +68,12 @@ screenshots were not reused as current acceptance evidence.
   observations and their digest were unchanged, with zero inferred M7 rows.
 - [x] Desktop/mobile conversion-workspace smoke passed with no horizontal
   overflow and no browser console warning/error.
+- [x] Safe UI DSL chart/timeline contracts reject invalid fields, units,
+  unsupported properties and multi-series declarations; the complete backend
+  suite remains 55/55.
+- [x] Non-empty chart/timeline rendering passed desktop and 390×844 browser
+  smoke using only the isolated integration database. Compose was restored to
+  the real one-dashboard database after the check.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
@@ -102,12 +108,15 @@ insight.
   geography remain unavailable; current code rejects rather than approximates them.
 - Manual revisions remain ineligible until an evidence-bound human-attestation
   contract can be replayed.
-- Safe UI DSL currently supports stack, metric, table and provenance; custom
-  React source is stored but not executed.
+- Safe UI DSL supports stack, metric, table, bounded single-series chart,
+  evidence-date timeline and provenance. Map and multi-series panel nodes are
+  still unavailable; custom React source is stored but not executed.
 - L2 is a deterministic stored-input evidence summary, not predictive or
   externally augmented analysis.
 - General panel-level `map` remains outside the safe UI DSL; the implemented
   Shell map has its own `trusted-insight-map-v1` contract.
+- Multi-series charts remain outside the current safe contract; unsupported
+  declarations are rejected rather than silently rendered as one series.
 
 None of these limitations is represented as complete in the UI or release
 record.

@@ -2,6 +2,26 @@
 
 Last full validation: 2026-08-10 (Asia/Shanghai).
 
+## M8 safe chart/timeline milestone result
+
+The full disposable-PostgreSQL backend suite remains 55/55 after extending the
+dashboard save API and collection/extraction integration path with Schema-bound
+chart and timeline nodes. Contract coverage rejects unknown node properties,
+non-array data sources, invalid axes, free-form metric units, non-date timeline
+fields and unsupported multi-series declarations.
+
+Frontend typecheck and production build passed with 2,889 modules, and the
+production dependency audit reported zero vulnerabilities. The current
+Compose bundle was exercised first against the unchanged real NHTSA database,
+then temporarily against the isolated integration database to verify a non-empty
+area chart (2 stored numeric points) and timeline (2 stored events). At 390×844,
+`innerWidth=390`, `scrollWidth=384`, and both visual components were 330 px wide;
+there was no Vite error overlay, incomplete image or rendered error state. The
+Compose web service was then restored to `autoprism`; the real database still
+contained exactly one dashboard and the original API returned only the
+published automotive dashboard. No synthetic test record entered the real
+database.
+
 ## M7 bounded numeric milestone result
 
 The final disposable PostgreSQL suite passed 55/55 tests with database tests

@@ -310,9 +310,31 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                     "count": {
                                         "type": "integer",
                                         "x-unit": "vehicle",
-                                    }
+                                    },
+                                    "records": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "reported_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                },
+                                                "label": {"type": "string"},
+                                                "value": {
+                                                    "type": "number",
+                                                    "x-unit": "vehicle",
+                                                },
+                                            },
+                                            "required": [
+                                                "reported_at",
+                                                "label",
+                                                "value",
+                                            ],
+                                        },
+                                    },
                                 },
-                                "required": ["count"],
+                                "required": ["count", "records"],
                                 "x-autoprism": {
                                     "time_dimension": "snapshot.retrieved_at",
                                     "geographic_dimension": "market",
@@ -322,8 +344,24 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             },
                             "template_kind": "ui_dsl",
                             "ui_dsl": {
-                                "type": "metric",
-                                "field": "count",
+                                "type": "stack",
+                                "children": [
+                                    {"type": "metric", "field": "count"},
+                                    {
+                                        "type": "chart",
+                                        "field": "records",
+                                        "variant": "line",
+                                        "x_field": "reported_at",
+                                        "y_field": "value",
+                                    },
+                                    {
+                                        "type": "timeline",
+                                        "field": "records",
+                                        "time_field": "reported_at",
+                                        "title_field": "label",
+                                        "value_field": "value",
+                                    },
+                                ],
                             },
                             "source_pool_id": pool["id"],
                         }

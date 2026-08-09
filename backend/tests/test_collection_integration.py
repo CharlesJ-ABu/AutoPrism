@@ -385,6 +385,28 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                 "type": "number",
                                 "x-unit": "degree_longitude",
                             },
+                            "records": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "reported_at": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                        },
+                                        "label": {"type": "string"},
+                                        "value": {
+                                            "type": "number",
+                                            "x-unit": "vehicle",
+                                        },
+                                    },
+                                    "required": [
+                                        "reported_at",
+                                        "label",
+                                        "value",
+                                    ],
+                                },
+                            },
                         },
                         "required": [
                             "location",
@@ -397,6 +419,7 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             "reported_at",
                             "latitude",
                             "longitude",
+                            "records",
                         ],
                         "x-autoprism": {
                             "time_dimension": {
@@ -426,9 +449,30 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     },
                     template_kind=TemplateKind.UI_DSL,
                     ui_dsl={
-                        "type": "metric",
-                        "field": "sales",
-                        "label": "Sales",
+                        "type": "stack",
+                        "children": [
+                            {
+                                "type": "metric",
+                                "field": "sales",
+                                "label": "Sales",
+                            },
+                            {
+                                "type": "chart",
+                                "field": "records",
+                                "variant": "area",
+                                "x_field": "reported_at",
+                                "y_field": "value",
+                                "label": "Stored sales reports",
+                            },
+                            {
+                                "type": "timeline",
+                                "field": "records",
+                                "time_field": "reported_at",
+                                "title_field": "label",
+                                "value_field": "value",
+                                "label": "Report timeline",
+                            },
+                        ],
                     },
                     visualization_contract={"type": "metric"},
                     extraction_prompt="Extract cited regional sales and coordinates.",
@@ -445,6 +489,7 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             "reported_at": "reported_at",
                             "latitude": "latitude",
                             "longitude": "longitude",
+                            "records": "records",
                         },
                     },
                     source_pool_id=pool.id,
@@ -482,6 +527,11 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         '"rate_basis":"instant",'
                         '"reported_at":"2026-08-10T00:00:00Z",'
                         '"latitude":22.5431,"longitude":114.0579,'
+                        '"records":['
+                        '{"reported_at":"2026-08-09T00:00:00Z",'
+                        '"label":"Prior report","value":40},'
+                        '{"reported_at":"2026-08-10T00:00:00Z",'
+                        '"label":"Current report","value":42}],'
                         f'"source_marker":"{publisher}"}}'
                     ).encode()
                     collected = await CollectionService(

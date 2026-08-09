@@ -3,6 +3,24 @@ import { ChevronRight, Database, Fingerprint } from 'lucide-react';
 import { safeHostname, formatDate, shortHash } from '../../lib/format';
 import type { PanelView } from '../../lib/v2-api';
 import { Status } from '../ui';
+import { SafeChart } from './SafeChart';
+import { SafeTimeline } from './SafeTimeline';
+
+const flattenDsl = (node: PanelView['ui_dsl']): PanelView['ui_dsl'][] => (
+  node.type === 'stack'
+    ? (node.children ?? []).flatMap(flattenDsl)
+    : [node]
+);
+
+const objectRows = (value: unknown) => (
+  Array.isArray(value)
+    ? value.filter(
+        (row): row is Record<string, unknown> => (
+          typeof row === 'object' && row !== null && !Array.isArray(row)
+        ),
+      )
+    : []
+);
 
 export function DashboardPanel({
   panel,
@@ -11,21 +29,15 @@ export function DashboardPanel({
   panel: PanelView;
   onInspect: () => void;
 }) {
-  const dslNodes = panel.ui_dsl.type === 'stack'
-    ? panel.ui_dsl.children ?? []
-    : [panel.ui_dsl];
+  const dslNodes = flattenDsl(panel.ui_dsl);
   const metricNode = dslNodes.find((item) => item.type === 'metric');
   const tableNode = dslNodes.find((item) => item.type === 'table');
+  const chartNodes = dslNodes.filter((item) => item.type === 'chart');
+  const timelineNodes = dslNodes.filter((item) => item.type === 'timeline');
   const metricField = metricNode?.field;
   const metricValue = metricField ? panel.data?.[metricField] : undefined;
-  const tableField = tableNode?.field ?? 'records';
-  const rawRows = panel.data?.[tableField];
-  const records = Array.isArray(rawRows)
-    ? rawRows.filter(
-        (row): row is Record<string, unknown> =>
-          typeof row === 'object' && row !== null && !Array.isArray(row),
-      )
-    : [];
+  const tableField = tableNode?.field;
+  const records = tableField ? objectRows(panel.data?.[tableField]) : [];
   const columns = tableNode?.columns ?? (records[0] ? Object.keys(records[0]) : []);
   const visibleRecords = records.slice(0, tableNode?.page_size ?? 8);
   const evidence = panel.evidence[0];
@@ -46,7 +58,7 @@ export function DashboardPanel({
           证据终端 <ChevronRight size={14} />
         </button>
       </div>
-      <div className="metric-row">
+      {metricNode && <div className="metric-row">
         <div className="metric-value">
           {metricValue === undefined || metricValue === null
             ? '—'
@@ -55,13 +67,30 @@ export function DashboardPanel({
               : String(metricValue)}
         </div>
         <div>
-          <strong>{metricNode?.label ?? metricField ?? '未配置指标'}</strong>
+          <strong>
+            {metricNode?.label ?? metricField ?? '未配置指标'}
+            {metricNode.unit ? ` · ${metricNode.unit}` : ''}
+          </strong>
           <span>LATEST STRUCTURED OUTPUT</span>
         </div>
         <Status tone={valid ? 'warning' : panel.extraction ? 'danger' : 'neutral'}>
           {valid ? 'UNVERIFIED DATA' : panel.extraction ? 'OUTPUT INVALID' : 'NO EXTRACTION'}
         </Status>
-      </div>
+      </div>}
+      {chartNodes.map((node, index) => (
+        <SafeChart
+          key={`chart-${node.field}-${index}`}
+          node={node}
+          rows={objectRows(node.field ? panel.data?.[node.field] : undefined)}
+        />
+      ))}
+      {timelineNodes.map((node, index) => (
+        <SafeTimeline
+          key={`timeline-${node.field}-${index}`}
+          node={node}
+          rows={objectRows(node.field ? panel.data?.[node.field] : undefined)}
+        />
+      ))}
       {tableNode && visibleRecords.length > 0 ? (
         <div className="table-wrap">
           <table>
@@ -87,8 +116,14 @@ export function DashboardPanel({
         </div>
       ) : null}
       <footer className="panel-footer">
-        <span><Database size={13} /> {evidence ? safeHostname(evidence.source_url) : '等待可信采集'}</span>
-        <span><Fingerprint size={13} /> {evidence ? shortHash(evidence.artifact_sha256) : '无文件哈希'}</span>
+        <span>
+          <Database size={13} />
+          {evidence ? safeHostname(evidence.source_url) : '等待可信采集'}
+        </span>
+        <span>
+          <Fingerprint size={13} />
+          {evidence ? shortHash(evidence.artifact_sha256) : '无文件哈希'}
+        </span>
         <span>{evidence ? formatDate(evidence.retrieved_at) : '未抓取'}</span>
         <span>{panel.evidence.length} 个定位片段</span>
       </footer>

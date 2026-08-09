@@ -13,8 +13,9 @@ INFO/validation/review workflows, append-only dynamically replayed trust
 eligibility and stored-input-only deterministic L2. See
 [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
 known limitations. The trusted-map follow-up and the bounded numeric M7
-milestone are complete; richer UI DSL, discovery, scheduling and isolated
-custom-component execution remain the next V2 work.
+milestone are complete. The safe UI DSL now includes bounded single-series
+charts and evidence-date timelines; discovery, scheduling, additional visual
+types and isolated custom-component execution remain the next V2 work.
 
 ## Status at branch creation
 
@@ -103,8 +104,9 @@ unavailable instead of generating an unverified insight.
 Exit: users can create, save, switch, and audit multiple research dashboards.
 
 Title-to-proposal, editable structured JSON, immutable save, dashboard
-switching, and metric/table/provenance rendering are operational. The full UI
-DSL component registry and isolated custom React runtime remain pending.
+switching, and metric/table/chart/timeline/provenance rendering are
+operational. Additional allowlisted visual types and the isolated custom React
+runtime remain pending.
 
 ## M6 — Exact lineage and trust replay (complete)
 

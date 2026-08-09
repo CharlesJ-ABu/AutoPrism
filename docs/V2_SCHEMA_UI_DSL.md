@@ -7,9 +7,9 @@ Every saved child panel freezes two related contracts:
 1. a Draft 2020-12 JSON Schema describing stored INFO data;
 2. a non-executable UI DSL describing how the trusted client may present it.
 
-The UI DSL is deliberately small. Unknown node types are rejected by the API,
-not silently ignored, and no DSL field may reference data absent from the
-frozen Schema.
+The UI DSL is deliberately bounded. Unknown node types and properties are
+rejected by the API, not silently ignored, and no DSL field may reference data
+absent from the frozen Schema.
 
 ## Required Schema semantics
 
@@ -136,6 +136,8 @@ Displays one field that exists in the root Schema.
 ```
 
 The renderer never replaces a missing metric with zero or a generated value.
+When `unit` is present it must exactly match the field's frozen Schema
+`x-unit`; it is not a free-form display label.
 
 ### `table`
 
@@ -150,6 +152,50 @@ Schema.
   "page_size": 20
 }
 ```
+
+### `chart`
+
+Displays a single real series from an array field as a line, bar or area chart.
+The Y field must be numeric and declare exactly one of `x-unit` or
+`x-unitless: true`. The X field must be a string or numeric item property.
+
+```json
+{
+  "type": "chart",
+  "field": "records",
+  "variant": "line",
+  "x_field": "reported_at",
+  "y_field": "value",
+  "label": "已报告数值",
+  "max_points": 80
+}
+```
+
+`max_points` is bounded to 2–200. The renderer preserves stored row order,
+rejects non-finite values and reports an empty state rather than interpolating,
+extrapolating or adding trend points. Multi-series grouping is not accepted in
+this contract version.
+
+### `timeline`
+
+Displays stored events from an array field. The time field must be a Schema
+string with `format: date-time`; the title must be a string and an optional
+value field must be numeric.
+
+```json
+{
+  "type": "timeline",
+  "field": "records",
+  "time_field": "reported_at",
+  "title_field": "event_name",
+  "value_field": "value",
+  "label": "公告时间线",
+  "max_items": 20
+}
+```
+
+Events are sorted only from their stored timestamps. Invalid or missing dates
+are not repaired, and the renderer never creates placeholder events.
 
 ### `provenance`
 
@@ -170,7 +216,7 @@ or elevate trust.
 
 ## Unsupported nodes
 
-`chart`, `timeline`, `map`, `heatmap`, `radar`, `ticker` and `network` remain
+`map`, `heatmap`, `radar`, `ticker`, `network` and multi-series charts remain
 explicitly unavailable until they have:
 
 - a versioned data contract;

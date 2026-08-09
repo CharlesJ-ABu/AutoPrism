@@ -131,8 +131,18 @@ class PanelSchemaTests(unittest.TestCase):
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": {"name": {"type": "string"}},
-                        "required": ["name"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "reported_at": {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            "value": {
+                                "type": "number",
+                                "x-unit": "vehicle",
+                            },
+                        },
+                        "required": ["name", "reported_at", "value"],
                     },
                 },
             },
@@ -142,15 +152,55 @@ class PanelSchemaTests(unittest.TestCase):
             "children": [
                 {"type": "metric", "field": "sales", "label": "Sales"},
                 {"type": "table", "field": "records", "columns": ["name"]},
+                {
+                    "type": "chart",
+                    "field": "records",
+                    "variant": "line",
+                    "x_field": "reported_at",
+                    "y_field": "value",
+                    "max_points": 40,
+                },
+                {
+                    "type": "timeline",
+                    "field": "records",
+                    "time_field": "reported_at",
+                    "title_field": "name",
+                    "value_field": "value",
+                },
                 {"type": "provenance", "show_source": True},
             ],
         }
         self.assertEqual(validate_ui_dsl(schema, dsl), ())
         issues = validate_ui_dsl(
             schema,
-            {"type": "chart", "field": "sales"},
+            {
+                "type": "chart",
+                "field": "records",
+                "variant": "line",
+                "x_field": "reported_at",
+                "y_field": "name",
+            },
         )
-        self.assertIn("unsupported UI DSL type", issues[0].message)
+        self.assertTrue(any("chart axis" in item.message for item in issues))
+        self.assertTrue(
+            validate_ui_dsl(
+                schema,
+                {
+                    "type": "chart",
+                    "field": "records",
+                    "variant": "line",
+                    "x_field": "reported_at",
+                    "y_field": "value",
+                    "series_field": "name",
+                },
+            )
+        )
+        self.assertTrue(
+            validate_ui_dsl(
+                schema,
+                {"type": "metric", "field": "sales", "unit": "currency"},
+            )
+        )
         self.assertTrue(
             validate_ui_dsl(
                 schema,
