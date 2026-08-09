@@ -63,6 +63,7 @@ class V2ApiInputContractTests(unittest.IsolatedAsyncioTestCase):
                             "input_observation_ids": observation_ids,
                             "output_metric_key": "derived_metric",
                             "output_unit": "vehicle",
+                            "output_quantum": "1",
                             "parameters": invalid["parameters"],
                         },
                     )
@@ -86,6 +87,7 @@ class V2ApiInputContractTests(unittest.IsolatedAsyncioTestCase):
                         "input_observation_ids": [observation_id],
                         "output_metric_key": "derived_metric",
                         "output_unit": "vehicle",
+                        "output_quantum": "1",
                         "parameters": {},
                     },
                 )
@@ -103,6 +105,30 @@ class V2ApiInputContractTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(calculation_response.status_code, 422)
         self.assertEqual(validation_response.status_code, 422)
+
+    async def test_conversion_contract_is_fail_closed_before_database_work(self):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            registry = await client.get("/api/v2/verification/unit-registry")
+            invalid = await client.post(
+                "/api/v2/verification/conversions",
+                json={
+                    "input_observation_id": str(uuid.uuid4()),
+                    "kind": "currency",
+                    "output_metric_key": "revenue_cny",
+                    "output_quantum": "0.01",
+                    "to_currency": "CNY",
+                },
+            )
+        self.assertEqual(registry.status_code, 200, registry.text)
+        self.assertEqual(registry.json()["version"], "unit-registry-v1")
+        self.assertTrue(
+            any(item["code"] == "thousand_vehicle" for item in registry.json()["units"])
+        )
+        self.assertEqual(invalid.status_code, 422, invalid.text)
 
     async def test_extraction_service_value_error_is_422(self):
         panel_version_id = uuid.uuid4()

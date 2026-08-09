@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
-import json
+import simplejson as json
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -200,7 +200,7 @@ def parse_json(
     media_type: str = "application/json",
     config: dict[str, Any] | None = None,
 ) -> ParseResult:
-    value: Any = json.loads(content)
+    value: Any = json.loads(content, use_decimal=True)
     config = config or {}
     record_path = config.get("record_path", "")
     selected = value

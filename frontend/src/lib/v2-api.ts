@@ -217,6 +217,13 @@ export interface MetricObservation {
   normalized_value: Record<string, unknown>;
   unit: string | null;
   currency: string | null;
+  numeric: {
+    value: string;
+    uncertainty_kind: 'exact' | 'bounded' | 'unknown';
+    absolute_error: string | null;
+    uncertainty_basis: Record<string, unknown>;
+    evidence_count: number;
+  } | null;
   observed_at: string | null;
   period_start: string | null;
   period_end: string | null;
@@ -269,6 +276,33 @@ export interface CalculationRun {
   created_at: string;
 }
 
+export interface ConversionRun {
+  id: string;
+  output_observation_id: string;
+  output_metric_key: string;
+  input_observation_id: string;
+  input_trust_assessment_id: string;
+  kind: 'unit' | 'currency';
+  fx_rate_observation_id: string | null;
+  registry_version: string;
+  engine_version: string;
+  plan: Record<string, unknown>;
+  input_snapshot: Record<string, unknown>;
+  result: Record<string, unknown>;
+  replay_hash: string;
+  created_at: string;
+}
+
+export interface UnitRegistry {
+  version: string;
+  units: Array<{
+    code: string;
+    dimension: string;
+    semantic_kind: string;
+    scale_to_base: string;
+  }>;
+}
+
 export interface ValidationRun {
   id: string;
   comparison_key: string;
@@ -310,6 +344,7 @@ export interface TrustAssessment {
   metric_key: string;
   validation_run_id: string | null;
   calculation_run_id: string | null;
+  conversion_run_id: string | null;
   review_decision_id: string | null;
   eligible: boolean;
   currently_eligible: boolean;
@@ -556,6 +591,7 @@ export const api = {
     input_observation_ids: string[];
     output_metric_key: string;
     output_unit: string | null;
+    output_quantum: string;
     parameters: Record<string, unknown>;
   }) =>
     request<{
@@ -564,6 +600,29 @@ export const api = {
       result: Record<string, unknown>;
       replay_hash: string;
     }>('/verification/calculate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getUnitRegistry: () => request<UnitRegistry>('/verification/unit-registry'),
+  listConversions: (panelVersionKey: string) =>
+    request<ConversionRun[]>(
+      `/verification/conversions?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
+    ),
+  convert: (payload: {
+    input_observation_id: string;
+    kind: 'unit' | 'currency';
+    output_metric_key: string;
+    output_quantum: string;
+    to_unit?: string;
+    to_currency?: string;
+    fx_rate_observation_id?: string;
+  }) =>
+    request<{
+      observation_id: string;
+      conversion_run_id: string;
+      result: Record<string, unknown>;
+      replay_hash: string;
+    }>('/verification/conversions', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, Calculator, CheckCircle2, GitCompareArrows, History, UserCheck } from 'lucide-react';
+import { ArrowRightLeft, BadgeCheck, Calculator, CheckCircle2, GitCompareArrows, History, UserCheck } from 'lucide-react';
 
 import { formatDate, safeHostname } from '../../lib/format';
 import {
   api,
   type CalculationRun,
+  type ConversionRun,
   type L2Insight,
   type MetricObservation,
   type ObservationRevision,
   type ReviewCase,
   type ReviewDecision,
   type TrustAssessment,
+  type UnitRegistry,
   type ValidationRun,
 } from '../../lib/v2-api';
 import { Button, EmptyState, ErrorState, LoadingState, Status } from '../../components/ui';
 import { ObservationLineageTrace } from './ObservationLineage';
 
-type TrustTab = 'observations' | 'calculations' | 'validations' | 'reviews' | 'eligibility';
+type TrustTab = 'observations' | 'calculations' | 'conversions' | 'validations' | 'reviews' | 'eligibility';
 
 const stateTone = (state: string) => {
   if (state === 'verified' || state === 'passed' || state === 'approved') return 'ok';
@@ -34,6 +36,8 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
   const [observations, setObservations] = useState<MetricObservation[]>([]);
   const [revisions, setRevisions] = useState<ObservationRevision[]>([]);
   const [calculations, setCalculations] = useState<CalculationRun[]>([]);
+  const [conversions, setConversions] = useState<ConversionRun[]>([]);
+  const [unitRegistry, setUnitRegistry] = useState<UnitRegistry | null>(null);
   const [validations, setValidations] = useState<ValidationRun[]>([]);
   const [reviews, setReviews] = useState<ReviewCase[]>([]);
   const [assessments, setAssessments] = useState<TrustAssessment[]>([]);
@@ -49,6 +53,8 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
         nextObservations,
         nextRevisions,
         nextCalculations,
+        nextConversions,
+        nextUnitRegistry,
         nextValidations,
         nextReviews,
         nextAssessments,
@@ -58,6 +64,8 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
           api.listObservations(panelVersionKey),
           api.listObservationRevisions(panelVersionKey),
           api.listCalculations(panelVersionKey),
+          api.listConversions(panelVersionKey),
+          api.getUnitRegistry(),
           api.listValidations(panelVersionKey),
           api.listReviews(panelVersionKey),
           api.listTrustAssessments(panelVersionKey),
@@ -66,6 +74,8 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
       setObservations(nextObservations);
       setRevisions(nextRevisions);
       setCalculations(nextCalculations);
+      setConversions(nextConversions);
+      setUnitRegistry(nextUnitRegistry);
       setValidations(nextValidations);
       setReviews(nextReviews);
       setAssessments(nextAssessments);
@@ -112,6 +122,9 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
         <button className={tab === 'calculations' ? 'active' : ''} onClick={() => setTab('calculations')}>
           <Calculator size={14} /> 计算 · {calculations.length}
         </button>
+        <button className={tab === 'conversions' ? 'active' : ''} onClick={() => setTab('conversions')}>
+          <ArrowRightLeft size={14} /> 换算 · {conversions.length}
+        </button>
         <button className={tab === 'validations' ? 'active' : ''} onClick={() => setTab('validations')}>
           <GitCompareArrows size={14} /> 验证 · {validations.length}
         </button>
@@ -133,6 +146,15 @@ export function TrustWorkspace({ panelVersionKey }: { panelVersionKey: string })
       )}
       {tab === 'calculations' && (
         <CalculationWorkspace observations={observations} runs={calculations} onChanged={load} />
+      )}
+      {tab === 'conversions' && (
+        <ConversionWorkspace
+          observations={observations}
+          assessments={assessments}
+          runs={conversions}
+          registry={unitRegistry}
+          onChanged={load}
+        />
       )}
       {tab === 'validations' && (
         <ValidationWorkspace observations={observations} runs={validations} onChanged={load} />
@@ -272,6 +294,14 @@ function ObservationWorkspace({
               <div><dt>原始值</dt><dd className="mono break">{jsonValue(observation.raw_value)}</dd></div>
               <div><dt>归一化值</dt><dd className="mono break">{jsonValue(observation.normalized_value)}</dd></div>
               <div><dt>单位 / 币种</dt><dd>{observation.unit ?? '单位未提供'} / {observation.currency ?? '币种未提供'}</dd></div>
+              <div>
+                <dt>数值误差</dt>
+                <dd>
+                  {observation.numeric
+                    ? `${observation.numeric.uncertainty_kind.toUpperCase()} · ±${observation.numeric.absolute_error ?? '未知'}`
+                    : 'LEGACY / 未冻结'}
+                </dd>
+              </div>
               <div><dt>维度</dt><dd className="mono break">{jsonValue(observation.dimensions)}</dd></div>
               <div><dt>记录时间</dt><dd>{formatDate(observation.created_at)}</dd></div>
             </dl>
@@ -349,8 +379,8 @@ function CalculationWorkspace({
   const [operation, setOperation] = useState('add');
   const [metricKey, setMetricKey] = useState('');
   const [unit, setUnit] = useState('');
+  const [quantum, setQuantum] = useState('');
   const [weights, setWeights] = useState('');
-  const [unitPlan, setUnitPlan] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -373,23 +403,12 @@ function CalculationWorkspace({
         }
         parameters.weights = parsedWeights;
       }
-      if (operation === 'multiply' || operation === 'divide') {
-        const parsedPlan = JSON.parse(unitPlan) as unknown;
-        if (
-          typeof parsedPlan !== 'object'
-          || parsedPlan === null
-          || Array.isArray(parsedPlan)
-          || Object.keys(parsedPlan).length === 0
-        ) {
-          throw new Error('单位计划必须是非空 JSON 对象');
-        }
-        parameters.unit_plan = parsedPlan;
-      }
       await api.calculate({
         operation,
         input_observation_ids: selected,
         output_metric_key: metricKey,
         output_unit: unit || null,
+        output_quantum: quantum,
         parameters,
       });
       setSelected([]);
@@ -410,15 +429,14 @@ function CalculationWorkspace({
         <ObservationSelector observations={observations} selected={selected} onChange={setSelected} />
         <label>运算<select value={operation} onChange={(event) => setOperation(event.target.value)}>
           <option value="add">相加</option><option value="subtract">相减</option>
-          <option value="multiply">相乘</option><option value="divide">相除</option>
           <option value="percent_change">百分比变化</option><option value="weighted_average">加权平均</option>
         </select></label>
         <label>输出指标键<input value={metricKey} onChange={(event) => setMetricKey(event.target.value)} /></label>
         <label>输出单位（必须显式）<input value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
+        <label>输出量化步长<input inputMode="decimal" value={quantum} onChange={(event) => setQuantum(event.target.value)} placeholder="例如 0.01" /></label>
         {operation === 'weighted_average' && <label>权重（按输入顺序，逗号分隔）<input value={weights} onChange={(event) => setWeights(event.target.value)} /></label>}
-        {(operation === 'multiply' || operation === 'divide') && <label>单位计划 JSON<textarea value={unitPlan} onChange={(event) => setUnitPlan(event.target.value)} placeholder='{"operation":"vehicle_per_day"}' /></label>}
         {error && <p className="form-error">{error}</p>}
-        <Button disabled={saving || !selected.length || !metricKey.trim() || !unit.trim()} onClick={() => void submit()}>
+        <Button disabled={saving || !selected.length || !metricKey.trim() || !unit.trim() || !quantum.trim()} onClick={() => void submit()}>
           {saving ? '正在执行…' : '执行并冻结计算运行'}
         </Button>
       </div>
@@ -433,6 +451,159 @@ function CalculationWorkspace({
           </dl>
         </article>
       )) : <EmptyState title="没有计算运行" description="选择已有观测并显式建立计算计划。" />}
+    </div>
+  );
+}
+
+function ConversionWorkspace({
+  observations,
+  assessments,
+  runs,
+  registry,
+  onChanged,
+}: {
+  observations: MetricObservation[];
+  assessments: TrustAssessment[];
+  runs: ConversionRun[];
+  registry: UnitRegistry | null;
+  onChanged: () => Promise<void>;
+}) {
+  const latest = useMemo(() => {
+    const values = new Map<string, TrustAssessment>();
+    assessments.forEach((assessment) => {
+      if (!values.has(assessment.observation_id)) values.set(assessment.observation_id, assessment);
+    });
+    return values;
+  }, [assessments]);
+  const eligible = observations.filter((item) => latest.get(item.id)?.currently_eligible);
+  const [inputId, setInputId] = useState('');
+  const [kind, setKind] = useState<'unit' | 'currency'>('unit');
+  const [metricKey, setMetricKey] = useState('');
+  const [quantum, setQuantum] = useState('');
+  const [toUnit, setToUnit] = useState('');
+  const [toCurrency, setToCurrency] = useState('');
+  const [fxRateId, setFxRateId] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const input = eligible.find((item) => item.id === inputId);
+  const sourceUnit = registry?.units.find((item) => item.code === input?.unit);
+  const compatibleUnits = registry?.units.filter(
+    (item) => sourceUnit
+      && item.dimension === sourceUnit.dimension
+      && item.semantic_kind === sourceUnit.semantic_kind
+      && item.code !== sourceUnit.code,
+  ) ?? [];
+  const fxRates = eligible.filter((item) => item.unit === 'currency_ratio');
+
+  const submit = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.convert({
+        input_observation_id: inputId,
+        kind,
+        output_metric_key: metricKey,
+        output_quantum: quantum,
+        ...(kind === 'unit'
+          ? { to_unit: toUnit }
+          : {
+              to_currency: toCurrency.toUpperCase(),
+              fx_rate_observation_id: fxRateId,
+            }),
+      });
+      setInputId('');
+      setMetricKey('');
+      await onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '换算失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="trust-stack">
+      <div className="trust-form">
+        <div className="drawer-section-title">
+          <h4>M7 确定性换算</h4>
+          <Status tone="info">{registry?.version ?? 'REGISTRY NOT LOADED'}</Status>
+        </div>
+        <p>
+          只接受当前可信、误差已冻结的输入。比例由服务器注册表或已有可信汇率观测推导；不能手填换算系数，也不会联网补汇率。
+        </p>
+        <label>
+          输入观测
+          <select value={inputId} onChange={(event) => setInputId(event.target.value)}>
+            <option value="">选择当前 ELIGIBLE 观测</option>
+            {eligible.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.metric_key} · {String(item.normalized_value.value)} {item.unit ?? ''} {item.currency ?? ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          类型
+          <select value={kind} onChange={(event) => setKind(event.target.value as 'unit' | 'currency')}>
+            <option value="unit">单位换算</option>
+            <option value="currency">货币换算</option>
+          </select>
+        </label>
+        <label>输出指标键（必须已存在于冻结 Schema）<input value={metricKey} onChange={(event) => setMetricKey(event.target.value)} /></label>
+        <label>输出量化步长<input inputMode="decimal" value={quantum} onChange={(event) => setQuantum(event.target.value)} placeholder="例如 0.01" /></label>
+        {kind === 'unit' ? (
+          <label>
+            目标单位
+            <select value={toUnit} onChange={(event) => setToUnit(event.target.value)}>
+              <option value="">选择同维度、同语义单位</option>
+              {compatibleUnits.map((item) => <option key={item.code} value={item.code}>{item.code}</option>)}
+            </select>
+          </label>
+        ) : (
+          <>
+            <label>目标币种<input value={toCurrency} maxLength={3} onChange={(event) => setToCurrency(event.target.value.toUpperCase())} placeholder="CNY" /></label>
+            <label>
+              汇率观测
+              <select value={fxRateId} onChange={(event) => setFxRateId(event.target.value)}>
+                <option value="">选择已有可信 currency_ratio</option>
+                {fxRates.map((item) => (
+                  <option key={item.id} value={item.id}>{item.metric_key} · {String(item.normalized_value.value)}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+        {error && <p className="form-error">{error}</p>}
+        <Button
+          disabled={
+            saving
+            || !inputId
+            || !metricKey.trim()
+            || !quantum.trim()
+            || (kind === 'unit' ? !toUnit : !toCurrency || !fxRateId)
+          }
+          onClick={() => void submit()}
+        >
+          {saving ? '正在重放并冻结…' : '执行并冻结换算'}
+        </Button>
+      </div>
+      {runs.length ? runs.map((run) => (
+        <article className="trust-record" key={run.id}>
+          <header>
+            <strong>{run.output_metric_key}</strong>
+            <Status tone="ok">{run.kind.toUpperCase()}</Status>
+          </header>
+          <dl className="detail-list compact">
+            <div><dt>结果与误差</dt><dd className="mono break">{jsonValue(run.result)}</dd></div>
+            <div><dt>计划</dt><dd className="mono break">{jsonValue(run.plan)}</dd></div>
+            <div><dt>冻结输入</dt><dd className="mono break">{jsonValue(run.input_snapshot)}</dd></div>
+            <div><dt>引擎</dt><dd>{run.engine_version}</dd></div>
+            <div><dt>重放哈希</dt><dd className="mono break">{run.replay_hash}</dd></div>
+          </dl>
+        </article>
+      )) : (
+        <EmptyState title="没有换算运行" description="只有当前可信且误差明确的观测可进入换算。" />
+      )}
     </div>
   );
 }
@@ -646,7 +817,7 @@ function EligibilityWorkspace({
         <h4>Append-only 可信资格评估</h4>
         <p>
           评估会重放原始文件与片段哈希、检查当前修订头、验证状态、独立来源数和计算记录。
-          它创建新评估，不修改观测；人工批准不能覆盖冲突验证。
+          转换观测改为重放冻结输入评估、注册表和误差区间。评估只追加历史；人工批准不能覆盖冲突验证。
         </p>
         {observations.length ? observations.map((observation) => {
           const candidates = validations.filter((run) => run.observation_ids.includes(observation.id));
@@ -665,7 +836,11 @@ function EligibilityWorkspace({
                   [observation.id]: event.target.value,
                 }))}
               >
-                <option value="">未选择验证（将记录不合格）</option>
+                <option value="">
+                  {observation.lineage.origin.kind === 'conversion'
+                    ? '转换使用冻结输入评估（无需跨源验证）'
+                    : '未选择验证（将记录不合格）'}
+                </option>
                 {candidates.map((run) => (
                   <option key={run.id} value={run.id}>{run.state} · {run.id.slice(0, 8)}</option>
                 ))}
@@ -711,7 +886,7 @@ function EligibilityWorkspace({
         ) : (
           <EmptyState
             title="L2 当前不可用"
-            description="当前面板没有通过 trust-eligibility-v1 的修订头；系统不会用 UNVERIFIED 数据生成洞察。"
+            description="当前面板没有通过最新可信策略的修订头；系统不会用 UNVERIFIED 数据生成洞察。"
           />
         )}
         <label>创建者（当前为自我声明）<input value={actor} onChange={(event) => setActor(event.target.value)} /></label>

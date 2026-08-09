@@ -12,8 +12,9 @@ direct-source operations, exact observation/extraction lineage, auditable
 INFO/validation/review workflows, append-only dynamically replayed trust
 eligibility and stored-input-only deterministic L2. See
 [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
-known limitations. The trusted-map follow-up is complete; M7
-unit/currency/error work is not represented as complete.
+known limitations. The trusted-map follow-up and the bounded numeric M7
+milestone are complete; richer UI DSL, discovery, scheduling and isolated
+custom-component execution remain the next V2 work.
 
 ## Status at branch creation
 
@@ -58,7 +59,8 @@ Google discovery remains pending; direct registered sources are operational.
 - Introduce provider-neutral model adapters and structured-output validation.
 - Require every extracted core field to carry an evidence locator.
 - Freeze explicit unit, currency and time-basis scope and reject implicit
-  conversion; the general deterministic conversion registry is M7 work.
+  conversion. M7 now supplies the deterministic registry and evidence-bound
+  conversion runs.
 - Execute model-proposed calculations with a restricted calculation engine.
 - Add cross-source comparison policies and human review queues.
 - Preserve corrections through `supersedes_id`.
@@ -66,9 +68,10 @@ Google discovery remains pending; direct registered sources are operational.
 Exit: every number admitted by the current trust policy can be traced,
 replayed and independently validated.
 
-General unit/currency conversion tables remain pending. Deterministic decimal
-calculations, tolerance checks, review cases, append-only decisions, and
-schema-bound extraction are operational.
+Deterministic decimal calculations, bounded tolerance checks, unit/currency
+conversion runs, review cases, append-only decisions, and schema-bound
+extraction are operational. Triangular FX and dimensional multiply/divide are
+still deliberately unsupported.
 
 ## Phase 3 — Automotive proof (complete)
 
@@ -141,16 +144,27 @@ evidence/operations drawers and horizontal-overflow inspection.
 Exit: no map feature is returned when its L2 input assessment becomes stale or
 when geography, citations, extraction manifest or frozen output cannot replay.
 
-## M7 — Units, currency and error semantics (not started)
+## M7 — Units, currency and error semantics (complete)
 
-- Add deterministic unit, currency and time-basis conversion registries.
-- Freeze conversion formulas, rates, effective timestamps and engine versions.
-- Define deterministic precision/rounding and error-propagation contracts.
-- Add a trusted calculation-engine version only after replay and failure tests
-  cover the complete conversion/error path.
+- Added `unit-registry-v1` with fixed dimensions, semantic kinds and exact
+  Decimal scale factors; arbitrary aliases and user-provided factors are rejected.
+- Added immutable conversion runs that freeze input observations and current
+  assessments, direct/inverse evidence-bound FX rates, exact time basis, plan,
+  result, quantum and replay hash.
+- Added `decimal-v2-bounded` with an isolated 50-digit HALF_EVEN context and
+  conservative interval propagation. Unknown uncertainty fails closed.
+- Added `numeric-v3-bounded-source-artifact-publisher` and
+  `trust-eligibility-v4-bounded-conversion-replay`; derived observations become
+  eligible only after independent replay of all current input assessments.
+- Added migration `0007_v2_numeric_conversion`, API/UI conversion workflows,
+  strict Schema extensions and fresh/populated database regression gates.
 
 Exit: derived observations can become trust eligible without implicit
 conversion, hidden rounding or unverifiable uncertainty.
+
+Explicit boundary: v1 does not implement triangular FX, live-rate discovery,
+“closest” rate selection, or dimensional algebra for multiply/divide. These
+paths return an unavailable/validation state instead of guessing.
 
 ## Phase 5 — SaaS branch (not started)
 

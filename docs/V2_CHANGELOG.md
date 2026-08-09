@@ -5,6 +5,32 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M7 — Bounded numeric, unit and currency replay (2026-08-10)
+
+- Added migration `0007_v2_numeric_conversion` with immutable canonical numeric
+  values, uncertainty evidence, normalized calculation inputs and conversion runs.
+  Historical observations are not backfilled with invented values or error bounds.
+- Added `unit-registry-v1`: exact fixed Decimal scales, dimension and semantic-kind
+  checks, and no free-form aliases or caller-provided conversion factors.
+- Added `decimal-v2-bounded` with isolated 50-digit HALF_EVEN arithmetic,
+  explicit output quantum and conservative interval propagation. Unknown error
+  fails closed instead of becoming zero.
+- Preserved JSON decimals end to end with exact Decimal parsing and database
+  serialization; high-precision source values no longer pass through binary floats.
+- Added `time-scope-v1` so instant, period-end and period-average authority comes
+  from required cited ISO timestamps with explicit offsets, never retrieval time.
+- Added evidence-bound direct/inverse FX conversion. Rates must be existing,
+  current eligible `currency_ratio` observations with exact matching instant,
+  period-end or period-average scope; live, closest and triangular rates are absent.
+- Upgraded cross-source validation to
+  `numeric-v3-bounded-source-artifact-publisher` and Trust to
+  `trust-eligibility-v4-bounded-conversion-replay`. Calculation and conversion
+  eligibility independently replays every frozen current input assessment.
+- Added unit-registry/conversion APIs and an operational cockpit conversion tab.
+  The UI never accepts a numeric factor or rate from the user.
+- Kept dimensional multiply/divide unavailable until a versioned algebra exists.
+  No unsupported operation is represented as trusted.
+
 ### M6.1 — Trusted dual insight map (2026-08-10)
 
 - Added `geo-scope-v1` Schema metadata for evidence-bound point, line and zone

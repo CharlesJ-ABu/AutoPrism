@@ -22,14 +22,29 @@ from app.domain.evidence import (
     validate_locator,
 )
 from app.domain.map_contract import is_supported_geographic_scope
+from app.domain.numeric import (
+    CONVERSION_ENGINE_VERSION,
+    NUMERIC_ENGINE_VERSION,
+    UNIT_REGISTRY_VERSION,
+    UncertaintyKind,
+    canonical_decimal,
+    calculate_interval,
+    convert_currency,
+    convert_unit,
+    make_interval,
+)
 from app.domain.panel_schema import (
     build_geographic_scope,
+    build_temporal_scope,
     geographic_source_fields,
     validate_observation_contract,
 )
 from app.models.dashboards import ExtractionRun, PanelVersion
 from app.models.evidence import (
     CalculationRun,
+    CalculationRunInput,
+    ConversionKind,
+    ConversionRun,
     EvidenceArtifact,
     EvidenceFragment,
     ExtractionRunInput,
@@ -40,6 +55,8 @@ from app.models.evidence import (
     ObservationExtractionLink,
     ObservationGeography,
     ObservationGeographyEvidence,
+    ObservationNumericEvidence,
+    ObservationNumericValue,
     ObservationRevision,
     ReviewCase,
     ReviewDecision,
@@ -64,20 +81,21 @@ from app.services.verification_service import (
 )
 
 
-TRUST_POLICY_VERSION = "trust-eligibility-v3-validation-replay"
+TRUST_POLICY_VERSION = "trust-eligibility-v4-bounded-conversion-replay"
 
-# No calculation engine is trusted by this policy yet. In particular,
-# decimal-v1 uses the process-global Decimal context and has no error model.
-# A future engine must add a real replay implementation here; changing only a
-# stored version label can never make a calculation eligible.
-TRUSTED_CALCULATION_ENGINE_VERSIONS: frozenset[str] = frozenset()
+# Only the bounded Decimal engine below is trusted. Older decimal-v1 runs lack
+# a frozen error model and remain immutable, visible, and ineligible. Merely
+# changing a stored version label never passes the independent replay below.
+TRUSTED_CALCULATION_ENGINE_VERSIONS: frozenset[str] = frozenset(
+    {NUMERIC_ENGINE_VERSION}
+)
 
 
 def _is_finite_json_number(value: Any) -> bool:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         return False
     try:
-        return Decimal(str(value)).is_finite()
+        return value.is_finite() if isinstance(value, Decimal) else Decimal(str(value)).is_finite()
     except (InvalidOperation, ValueError):
         return False
 
@@ -487,6 +505,649 @@ class TrustService:
             "manifest_hash": sha256_json(manifest_entries),
         }
 
+    async def _numeric_integrity(
+        self,
+        observation: MetricObservation,
+    ) -> dict[str, Any]:
+        """Replay the frozen decimal/uncertainty record without filling gaps."""
+
+        details: dict[str, Any] = {
+            "accepted": False,
+            "recorded": False,
+            "value_matches": False,
+            "uncertainty_kind": None,
+            "uncertainty_supported": False,
+            "evidence_complete": False,
+        }
+        numeric = await self.db.get(ObservationNumericValue, observation.id)
+        if numeric is None:
+            return details
+        details["recorded"] = True
+        details["uncertainty_kind"] = numeric.uncertainty_kind.value
+        links = (
+            await self.db.execute(
+                select(ObservationNumericEvidence)
+                .where(ObservationNumericEvidence.observation_id == observation.id)
+                .order_by(ObservationNumericEvidence.ordinal)
+            )
+        ).scalars().all()
+        try:
+            normalized = observation.normalized_value
+            if not isinstance(normalized, dict) or set(normalized) != {"value"}:
+                raise ValueError("normalized value contract is invalid")
+            details["value_matches"] = bool(
+                canonical_decimal(normalized["value"])
+                == canonical_decimal(numeric.value)
+            )
+            make_interval(
+                numeric.value,
+                uncertainty_kind=UncertaintyKind(numeric.uncertainty_kind.value),
+                absolute_error=numeric.absolute_error,
+            )
+            ordinals = [item.ordinal for item in links]
+            details["evidence_complete"] = bool(
+                len(links) == numeric.evidence_count
+                and ordinals == list(range(len(links)))
+                and all(item.claim_key and item.field_path for item in links)
+            )
+            details["uncertainty_supported"] = bool(
+                numeric.uncertainty_kind.value in {"exact", "bounded"}
+                and isinstance(numeric.uncertainty_basis, dict)
+                and (
+                    (
+                        numeric.uncertainty_kind.value == "exact"
+                        and numeric.uncertainty_basis.get("kind")
+                        in {"schema_exact", "derived_interval"}
+                    )
+                    or (
+                        numeric.uncertainty_kind.value == "bounded"
+                        and numeric.evidence_count > 0
+                        and numeric.uncertainty_basis.get("kind")
+                        in {"source_absolute_field", "derived_interval"}
+                    )
+                )
+            )
+            details["accepted"] = bool(
+                details["value_matches"]
+                and details["evidence_complete"]
+                and details["uncertainty_supported"]
+            )
+        except (KeyError, TypeError, ValueError):
+            details["accepted"] = False
+        return details
+
+    async def _conversion_integrity(
+        self,
+        conversion: ConversionRun,
+        observation: MetricObservation,
+    ) -> dict[str, Any]:
+        details: dict[str, Any] = {
+            "accepted": False,
+            "engine_supported": False,
+            "registry_supported": False,
+            "input_assessments_current": False,
+            "replay_matches": False,
+            "lineage_matches": False,
+            "replay_error": None,
+        }
+        try:
+            if not isinstance(conversion.plan, dict) or not isinstance(
+                conversion.input_snapshot, dict
+            ) or not isinstance(conversion.result, dict):
+                raise ValueError("conversion frozen payload is malformed")
+            details["engine_supported"] = (
+                conversion.engine_version == CONVERSION_ENGINE_VERSION
+            )
+            details["registry_supported"] = (
+                conversion.registry_version == UNIT_REGISTRY_VERSION
+            )
+            input_observation = await self.db.get(
+                MetricObservation, conversion.input_observation_id
+            )
+            input_numeric = await self.db.get(
+                ObservationNumericValue, conversion.input_observation_id
+            )
+            input_assessment = await self.db.get(
+                TrustAssessment, conversion.input_trust_assessment_id
+            )
+            if input_observation is None or input_numeric is None or input_assessment is None:
+                raise ValueError("conversion input lineage is incomplete")
+            input_current = bool(
+                input_assessment.observation_id == input_observation.id
+                and await self.is_assessment_current(input_assessment)
+            )
+            input_interval = make_interval(
+                input_numeric.value,
+                uncertainty_kind=UncertaintyKind(input_numeric.uncertainty_kind.value),
+                absolute_error=input_numeric.absolute_error,
+            )
+            fx_observation = None
+            fx_numeric = None
+            fx_assessment = None
+            fx_current = True
+            if conversion.kind is ConversionKind.UNIT:
+                result, plan = convert_unit(
+                    input_interval,
+                    from_unit=input_observation.unit,
+                    to_unit=conversion.plan.get("to_unit"),
+                    output_quantum=conversion.result.get("quantum"),
+                )
+                expected_unit = conversion.plan.get("to_unit")
+                expected_currency = input_observation.currency
+            else:
+                fx_observation = await self.db.get(
+                    MetricObservation, conversion.fx_rate_observation_id
+                )
+                fx_numeric = await self.db.get(
+                    ObservationNumericValue, conversion.fx_rate_observation_id
+                )
+                fx_assessment = await self.db.get(
+                    TrustAssessment, conversion.fx_rate_trust_assessment_id
+                )
+                if fx_observation is None or fx_numeric is None or fx_assessment is None:
+                    raise ValueError("FX lineage is incomplete")
+                fx_current = bool(
+                    fx_assessment.observation_id == fx_observation.id
+                    and await self.is_assessment_current(fx_assessment)
+                )
+                fx_interval = make_interval(
+                    fx_numeric.value,
+                    uncertainty_kind=UncertaintyKind(fx_numeric.uncertainty_kind.value),
+                    absolute_error=fx_numeric.absolute_error,
+                )
+                if fx_observation.unit != "currency_ratio" or not isinstance(
+                    fx_observation.dimensions, dict
+                ):
+                    raise ValueError("FX observation contract is invalid")
+                rate_basis = fx_observation.dimensions.get("rate_basis")
+                if (
+                    conversion.plan.get("rate_base_currency")
+                    != fx_observation.dimensions.get("base_currency")
+                    or conversion.plan.get("rate_quote_currency")
+                    != fx_observation.dimensions.get("quote_currency")
+                    or conversion.plan.get("rate_basis") != rate_basis
+                ):
+                    raise ValueError("FX frozen plan does not match its observation")
+                if rate_basis == "instant" and (
+                    input_observation.observed_at is None
+                    or input_observation.observed_at != fx_observation.observed_at
+                ):
+                    raise ValueError("instant FX timestamp mismatch")
+                if rate_basis == "period_end" and (
+                    input_observation.period_end is None
+                    or input_observation.period_end != fx_observation.period_end
+                ):
+                    raise ValueError("period-end FX date mismatch")
+                if rate_basis == "period_average" and (
+                    input_observation.period_start is None
+                    or input_observation.period_start != fx_observation.period_start
+                    or input_observation.period_end != fx_observation.period_end
+                ):
+                    raise ValueError("period-average FX range mismatch")
+                if rate_basis not in {"instant", "period_end", "period_average"}:
+                    raise ValueError("FX rate basis is unsupported")
+                result, plan = convert_currency(
+                    input_interval,
+                    fx_interval,
+                    from_currency=input_observation.currency,
+                    to_currency=conversion.plan.get("to_currency"),
+                    rate_base_currency=conversion.plan.get("rate_base_currency"),
+                    rate_quote_currency=conversion.plan.get("rate_quote_currency"),
+                    output_quantum=conversion.result.get("quantum"),
+                )
+                plan["rate_basis"] = conversion.plan.get("rate_basis")
+                expected_unit = input_observation.unit
+                expected_currency = conversion.plan.get("to_currency")
+            details["input_assessments_current"] = input_current and fx_current
+            output_numeric = await self.db.get(ObservationNumericValue, observation.id)
+            if output_numeric is None:
+                raise ValueError("conversion output numeric record is missing")
+            frozen_result = {
+                "value": canonical_decimal(result.value),
+                "absolute_error": canonical_decimal(result.absolute_error),
+                "low": canonical_decimal(result.low),
+                "high": canonical_decimal(result.high),
+                "quantum": canonical_decimal(result.quantum),
+                "unit": expected_unit,
+                "currency": expected_currency,
+            }
+            input_snapshot = {
+                "input": {
+                    "observation_id": str(input_observation.id),
+                    "assessment_id": str(input_assessment.id),
+                    "value": canonical_decimal(input_numeric.value),
+                    "absolute_error": (
+                        canonical_decimal(input_numeric.absolute_error)
+                        if input_numeric.absolute_error is not None
+                        else None
+                    ),
+                    "uncertainty_kind": input_numeric.uncertainty_kind.value,
+                    "unit": input_observation.unit,
+                    "currency": input_observation.currency,
+                },
+                "fx_rate": (
+                    {
+                        "observation_id": str(fx_observation.id),
+                        "assessment_id": str(fx_assessment.id),
+                        "value": canonical_decimal(fx_numeric.value),
+                        "absolute_error": (
+                            canonical_decimal(fx_numeric.absolute_error)
+                            if fx_numeric.absolute_error is not None
+                            else None
+                        ),
+                        "uncertainty_kind": fx_numeric.uncertainty_kind.value,
+                        "unit": fx_observation.unit,
+                        "dimensions": fx_observation.dimensions,
+                    }
+                    if fx_observation and fx_numeric and fx_assessment
+                    else None
+                ),
+            }
+            replay_payload = {
+                "kind": conversion.kind.value,
+                "registry_version": conversion.registry_version,
+                "engine_version": conversion.engine_version,
+                "plan": plan,
+                "input_snapshot": input_snapshot,
+                "result": frozen_result,
+            }
+            details["replay_matches"] = bool(
+                conversion.output_observation_id == observation.id
+                and conversion.plan == plan
+                and conversion.input_snapshot == input_snapshot
+                and conversion.result == frozen_result
+                and conversion.replay_hash == sha256_json(replay_payload)
+                and observation.normalized_value == {"value": frozen_result["value"]}
+                and observation.unit == expected_unit
+                and observation.currency == expected_currency
+                and canonical_decimal(output_numeric.value) == frozen_result["value"]
+                and canonical_decimal(output_numeric.absolute_error)
+                == frozen_result["absolute_error"]
+            )
+            source_observations = [input_observation]
+            if fx_observation is not None:
+                source_observations.append(fx_observation)
+            source_links: list[tuple[uuid.UUID, uuid.UUID]] = []
+            seen_source_links: set[tuple[uuid.UUID, uuid.UUID]] = set()
+            for source in source_observations:
+                rows = (
+                    await self.db.execute(
+                        select(ObservationEvidenceLink)
+                        .where(ObservationEvidenceLink.observation_id == source.id)
+                        .order_by(ObservationEvidenceLink.ordinal)
+                    )
+                ).scalars().all()
+                for row in rows:
+                    key = (row.evidence_fragment_id, source.id)
+                    if key not in seen_source_links:
+                        seen_source_links.add(key)
+                        source_links.append(key)
+            output_set = await self.db.get(ObservationEvidenceSet, observation.id)
+            output_links = (
+                await self.db.execute(
+                    select(ObservationEvidenceLink)
+                    .where(ObservationEvidenceLink.observation_id == observation.id)
+                    .order_by(ObservationEvidenceLink.ordinal)
+                )
+            ).scalars().all()
+            numeric_links = (
+                await self.db.execute(
+                    select(ObservationNumericEvidence)
+                    .where(ObservationNumericEvidence.observation_id == observation.id)
+                    .order_by(ObservationNumericEvidence.ordinal)
+                )
+            ).scalars().all()
+            try:
+                panel = await self.db.get(
+                    PanelVersion, uuid.UUID(observation.panel_version_key)
+                )
+            except (TypeError, ValueError):
+                panel = None
+            properties = (
+                panel.data_schema.get("properties")
+                if panel is not None and isinstance(panel.data_schema, dict)
+                else None
+            )
+            definition = (
+                properties.get(observation.metric_key)
+                if isinstance(properties, dict)
+                else None
+            )
+            link_contract = bool(
+                source_links
+                and output_set is not None
+                and output_set.citation_count == len(source_links)
+                and len(output_links) == len(source_links)
+                and all(
+                    link.ordinal == ordinal
+                    and link.evidence_fragment_id == fragment_id
+                    and link.claim_key == observation.metric_key
+                    and link.field_path == f"input_observation:{source_id}"
+                    and link.role
+                    == ("primary" if ordinal == 0 else "calculation_input")
+                    for ordinal, (link, (fragment_id, source_id)) in enumerate(
+                        zip(output_links, source_links, strict=True)
+                    )
+                )
+            )
+            numeric_link_contract = bool(
+                (
+                    output_numeric.absolute_error == 0
+                    and output_numeric.evidence_count == 0
+                    and not numeric_links
+                )
+                or (
+                    output_numeric.absolute_error > 0
+                    and output_numeric.evidence_count == len(source_links)
+                    and len(numeric_links) == len(source_links)
+                    and all(
+                        link.ordinal == ordinal
+                        and link.evidence_fragment_id == fragment_id
+                        and link.claim_key == observation.metric_key
+                        and link.field_path == f"input_observation:{source_id}"
+                        for ordinal, (link, (fragment_id, source_id)) in enumerate(
+                            zip(numeric_links, source_links, strict=True)
+                        )
+                    )
+                )
+            )
+            details["lineage_matches"] = bool(
+                isinstance(definition, dict)
+                and definition.get("type") in {"number", "integer"}
+                and definition.get("x-unit") == expected_unit
+                and definition.get("x-currency") == expected_currency
+                and observation.panel_version_key == input_observation.panel_version_key
+                and observation.schema_version == input_observation.schema_version
+                and observation.observed_at == input_observation.observed_at
+                and observation.period_start == input_observation.period_start
+                and observation.period_end == input_observation.period_end
+                and observation.dimensions == input_observation.dimensions
+                and observation.geographic_scope == {}
+                and isinstance(observation.raw_value, dict)
+                and observation.raw_value.get("origin") == "deterministic_conversion"
+                and output_numeric.uncertainty_basis
+                == {
+                    "kind": "derived_interval",
+                    "engine_version": CONVERSION_ENGINE_VERSION,
+                }
+                and link_contract
+                and numeric_link_contract
+            )
+            details["accepted"] = bool(
+                details["engine_supported"]
+                and details["registry_supported"]
+                and details["input_assessments_current"]
+                and details["replay_matches"]
+                and details["lineage_matches"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            details["replay_error"] = str(exc)
+        return details
+
+    async def _calculation_integrity(
+        self,
+        calculation: CalculationRun,
+        observation: MetricObservation,
+    ) -> dict[str, Any]:
+        details: dict[str, Any] = {
+            "accepted": False,
+            "engine_supported": calculation.engine_version
+            == NUMERIC_ENGINE_VERSION,
+            "input_assessments_current": False,
+            "replay_matches": False,
+            "lineage_matches": False,
+            "replay_error": None,
+        }
+        try:
+            if not isinstance(calculation.input_observation_ids, list) or not isinstance(
+                calculation.parameters, dict
+            ):
+                raise ValueError("calculation frozen header is malformed")
+            if set(calculation.parameters) != {
+                "operation_parameters",
+                "output_quantum",
+            }:
+                raise ValueError("calculation parameter contract is incomplete")
+            if calculation.operation not in {
+                "add",
+                "subtract",
+                "percent_change",
+                "weighted_average",
+            }:
+                raise ValueError("calculation operation is not trusted by this policy")
+            input_rows = (
+                await self.db.execute(
+                    select(CalculationRunInput)
+                    .where(CalculationRunInput.calculation_run_id == calculation.id)
+                    .order_by(CalculationRunInput.ordinal)
+                )
+            ).scalars().all()
+            if (
+                not input_rows
+                or [item.ordinal for item in input_rows]
+                != list(range(len(input_rows)))
+                or calculation.input_observation_ids
+                != [str(item.observation_id) for item in input_rows]
+            ):
+                raise ValueError("calculation normalized inputs are incomplete")
+            inputs: list[MetricObservation] = []
+            numeric_values: list[ObservationNumericValue] = []
+            assessments: list[TrustAssessment] = []
+            all_current = True
+            for row in input_rows:
+                source = await self.db.get(MetricObservation, row.observation_id)
+                numeric = await self.db.get(ObservationNumericValue, row.observation_id)
+                assessment = await self.db.get(
+                    TrustAssessment, row.trust_assessment_id
+                )
+                if source is None or numeric is None or assessment is None:
+                    raise ValueError("calculation input lineage is incomplete")
+                all_current = bool(
+                    all_current
+                    and assessment.observation_id == source.id
+                    and await self.is_assessment_current(assessment)
+                )
+                inputs.append(source)
+                numeric_values.append(numeric)
+                assessments.append(assessment)
+            details["input_assessments_current"] = all_current
+            first = inputs[0]
+            if any(
+                item.panel_version_key != first.panel_version_key
+                or item.schema_version != first.schema_version
+                or item.currency != first.currency
+                or item.dimensions != first.dimensions
+                or item.observed_at != first.observed_at
+                or item.period_start != first.period_start
+                or item.period_end != first.period_end
+                for item in inputs[1:]
+            ):
+                raise ValueError("calculation input scope changed")
+            intervals = [
+                make_interval(
+                    item.value,
+                    uncertainty_kind=UncertaintyKind(item.uncertainty_kind.value),
+                    absolute_error=item.absolute_error,
+                )
+                for item in numeric_values
+            ]
+            result, plan = calculate_interval(
+                calculation.operation,
+                intervals,
+                parameters=calculation.parameters["operation_parameters"],
+                output_quantum=calculation.parameters["output_quantum"],
+            )
+            expected_currency = (
+                None
+                if calculation.operation == "percent_change"
+                else first.currency
+            )
+            expected_unit = (
+                "percent"
+                if calculation.operation == "percent_change"
+                else first.unit
+            )
+            frozen_result = {
+                "value": canonical_decimal(result.value),
+                "absolute_error": canonical_decimal(result.absolute_error),
+                "low": canonical_decimal(result.low),
+                "high": canonical_decimal(result.high),
+                "quantum": canonical_decimal(result.quantum),
+                "unit": expected_unit,
+                "currency": expected_currency,
+            }
+            frozen_inputs = [
+                {
+                    "observation_id": str(source.id),
+                    "assessment_id": str(assessment.id),
+                    "value": canonical_decimal(numeric.value),
+                    "absolute_error": (
+                        canonical_decimal(numeric.absolute_error)
+                        if numeric.absolute_error is not None
+                        else None
+                    ),
+                    "uncertainty_kind": numeric.uncertainty_kind.value,
+                    "unit": source.unit,
+                    "currency": source.currency,
+                }
+                for source, assessment, numeric in zip(
+                    inputs, assessments, numeric_values, strict=True
+                )
+            ]
+            replay_payload = {
+                "operation": calculation.operation,
+                "input_observation_ids": [str(item.id) for item in inputs],
+                "inputs": frozen_inputs,
+                "parameters": calculation.parameters,
+                "result": frozen_result,
+                "engine_version": calculation.engine_version,
+            }
+            output_numeric = await self.db.get(ObservationNumericValue, observation.id)
+            details["replay_matches"] = bool(
+                output_numeric is not None
+                and calculation.output_observation_id == observation.id
+                and calculation.parameters["operation_parameters"] == plan["parameters"]
+                and calculation.result == frozen_result
+                and calculation.replay_hash == sha256_json(replay_payload)
+                and observation.normalized_value == {"value": frozen_result["value"]}
+                and observation.unit == expected_unit
+                and observation.currency == expected_currency
+                and canonical_decimal(output_numeric.value) == frozen_result["value"]
+                and canonical_decimal(output_numeric.absolute_error)
+                == frozen_result["absolute_error"]
+            )
+            source_links: list[tuple[uuid.UUID, uuid.UUID]] = []
+            seen: set[tuple[uuid.UUID, uuid.UUID]] = set()
+            for source in inputs:
+                rows = (
+                    await self.db.execute(
+                        select(ObservationEvidenceLink)
+                        .where(ObservationEvidenceLink.observation_id == source.id)
+                        .order_by(ObservationEvidenceLink.ordinal)
+                    )
+                ).scalars().all()
+                for row in rows:
+                    key = (row.evidence_fragment_id, source.id)
+                    if key not in seen:
+                        seen.add(key)
+                        source_links.append(key)
+            output_set = await self.db.get(ObservationEvidenceSet, observation.id)
+            output_links = (
+                await self.db.execute(
+                    select(ObservationEvidenceLink)
+                    .where(ObservationEvidenceLink.observation_id == observation.id)
+                    .order_by(ObservationEvidenceLink.ordinal)
+                )
+            ).scalars().all()
+            numeric_links = (
+                await self.db.execute(
+                    select(ObservationNumericEvidence)
+                    .where(ObservationNumericEvidence.observation_id == observation.id)
+                    .order_by(ObservationNumericEvidence.ordinal)
+                )
+            ).scalars().all()
+            try:
+                panel = await self.db.get(
+                    PanelVersion, uuid.UUID(observation.panel_version_key)
+                )
+            except (TypeError, ValueError):
+                panel = None
+            definition = (
+                panel.data_schema.get("properties", {}).get(observation.metric_key)
+                if panel is not None and isinstance(panel.data_schema, dict)
+                else None
+            )
+            link_contract = bool(
+                output_set is not None
+                and source_links
+                and output_set.citation_count == len(source_links)
+                and len(output_links) == len(source_links)
+                and all(
+                    link.ordinal == ordinal
+                    and link.evidence_fragment_id == fragment_id
+                    and link.claim_key == observation.metric_key
+                    and link.field_path == f"input_observation:{source_id}"
+                    and link.role
+                    == ("primary" if ordinal == 0 else "calculation_input")
+                    for ordinal, (link, (fragment_id, source_id)) in enumerate(
+                        zip(output_links, source_links, strict=True)
+                    )
+                )
+            )
+            numeric_link_contract = bool(
+                output_numeric is not None
+                and (
+                    (
+                        output_numeric.absolute_error == 0
+                        and not numeric_links
+                        and output_numeric.evidence_count == 0
+                    )
+                    or (
+                        output_numeric.absolute_error > 0
+                        and output_numeric.evidence_count == len(source_links)
+                        and len(numeric_links) == len(source_links)
+                        and all(
+                            link.ordinal == ordinal
+                            and link.evidence_fragment_id == fragment_id
+                            and link.field_path == f"input_observation:{source_id}"
+                            for ordinal, (link, (fragment_id, source_id)) in enumerate(
+                                zip(numeric_links, source_links, strict=True)
+                            )
+                        )
+                    )
+                )
+            )
+            details["lineage_matches"] = bool(
+                isinstance(definition, dict)
+                and definition.get("type") in {"number", "integer"}
+                and definition.get("x-unit") == expected_unit
+                and definition.get("x-currency") == expected_currency
+                and observation.panel_version_key == first.panel_version_key
+                and observation.schema_version == first.schema_version
+                and observation.observed_at == first.observed_at
+                and observation.period_start == first.period_start
+                and observation.period_end == first.period_end
+                and observation.dimensions == first.dimensions
+                and observation.geographic_scope == {}
+                and output_numeric is not None
+                and output_numeric.uncertainty_basis
+                == {
+                    "kind": "derived_interval",
+                    "engine_version": NUMERIC_ENGINE_VERSION,
+                }
+                and link_contract
+                and numeric_link_contract
+            )
+            details["accepted"] = bool(
+                details["engine_supported"]
+                and details["input_assessments_current"]
+                and details["replay_matches"]
+                and details["lineage_matches"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            details["replay_error"] = str(exc)
+        return details
+
     async def _origin_integrity(
         self,
         observation: MetricObservation,
@@ -496,6 +1157,13 @@ class TrustService:
             await self.db.execute(
                 select(CalculationRun).where(
                     CalculationRun.output_observation_id == observation.id
+                )
+            )
+        ).scalars().all()
+        conversions = (
+            await self.db.execute(
+                select(ConversionRun).where(
+                    ConversionRun.output_observation_id == observation.id
                 )
             )
         ).scalars().all()
@@ -516,10 +1184,14 @@ class TrustService:
                 .where(ObservationExtractionLink.observation_id == observation.id)
             )
         ).all()
-        origin_count = len(calculations) + len(revisions) + len(extraction_rows)
+        origin_count = (
+            len(calculations) + len(conversions) + len(revisions) + len(extraction_rows)
+        )
         origin_kind = (
             "ambiguous"
             if origin_count > 1
+            else "conversion"
+            if conversions
             else "calculation"
             if calculations
             else "revision"
@@ -540,7 +1212,20 @@ class TrustService:
         revision_policy_supported: bool | None = None
         calculation_replay_matches: bool | None = None
         calculation_engine_trusted: bool | None = None
+        numeric_contract_integrity: bool | None = None
         calculation = calculations[0] if len(calculations) == 1 else None
+        calculation_integrity = (
+            await self._calculation_integrity(calculation, observation)
+            if calculation is not None
+            and calculation.engine_version == NUMERIC_ENGINE_VERSION
+            else None
+        )
+        conversion = conversions[0] if len(conversions) == 1 else None
+        conversion_integrity = (
+            await self._conversion_integrity(conversion, observation)
+            if conversion is not None
+            else None
+        )
 
         if len(extraction_rows) == 1:
             extraction_link, extraction_run = extraction_rows[0]
@@ -632,6 +1317,17 @@ class TrustService:
             )
             data = record.get("data") if isinstance(record, dict) else None
             citations = record.get("evidence") if isinstance(record, dict) else None
+            temporal_contract_integrity = False
+            if panel is not None and isinstance(data, dict):
+                try:
+                    expected_time = build_temporal_scope(panel.data_schema, data)
+                    temporal_contract_integrity = bool(
+                        observation.observed_at == expected_time["observed_at"]
+                        and observation.period_start == expected_time["period_start"]
+                        and observation.period_end == expected_time["period_end"]
+                    )
+                except (KeyError, TypeError, ValueError):
+                    temporal_contract_integrity = False
             links: list[ObservationEvidenceLink] = evidence["links"]
             links_by_claim: dict[str, list[str]] = {}
             for link in links:
@@ -689,6 +1385,78 @@ class TrustService:
             output_metric_present = bool(
                 isinstance(data, dict) and observation.metric_key in data
             )
+            numeric_value = await self.db.get(ObservationNumericValue, observation.id)
+            numeric_links = (
+                await self.db.execute(
+                    select(ObservationNumericEvidence)
+                    .where(ObservationNumericEvidence.observation_id == observation.id)
+                    .order_by(ObservationNumericEvidence.ordinal)
+                )
+            ).scalars().all()
+            metric_definition = (
+                panel.data_schema.get("properties", {}).get(observation.metric_key)
+                if panel is not None and isinstance(panel.data_schema, dict)
+                else None
+            )
+            uncertainty_definition = (
+                metric_definition.get("x-uncertainty", {"kind": "unknown"})
+                if isinstance(metric_definition, dict)
+                else None
+            )
+            numeric_contract_integrity = False
+            if numeric_value is not None and isinstance(uncertainty_definition, dict):
+                uncertainty_kind = uncertainty_definition.get("kind", "unknown")
+                if uncertainty_kind == "exact":
+                    numeric_contract_integrity = bool(
+                        numeric_value.uncertainty_kind.value == "exact"
+                        and numeric_value.absolute_error == 0
+                        and numeric_value.uncertainty_basis == {"kind": "schema_exact"}
+                        and not numeric_links
+                    )
+                elif uncertainty_kind == "source_absolute_field":
+                    error_field = uncertainty_definition.get("field")
+                    error_citation = (
+                        citations.get(error_field)
+                        if isinstance(citations, dict) and isinstance(error_field, str)
+                        else None
+                    )
+                    cited_error_ids = (
+                        [error_citation]
+                        if isinstance(error_citation, str)
+                        else error_citation
+                        if isinstance(error_citation, list)
+                        and all(isinstance(item, str) for item in error_citation)
+                        else None
+                    )
+                    try:
+                        numeric_contract_integrity = bool(
+                            isinstance(data, dict)
+                            and isinstance(error_field, str)
+                            and error_field in data
+                            and numeric_value.uncertainty_kind.value == "bounded"
+                            and numeric_value.uncertainty_basis
+                            == {"kind": "source_absolute_field", "field": error_field}
+                            and canonical_decimal(data[error_field])
+                            == canonical_decimal(numeric_value.absolute_error)
+                            and cited_error_ids is not None
+                            and [item.ordinal for item in numeric_links]
+                            == list(range(len(numeric_links)))
+                            and len(numeric_links) == numeric_value.evidence_count
+                            and set(cited_error_ids)
+                            == {str(item.evidence_fragment_id) for item in numeric_links}
+                            and all(
+                                item.claim_key == error_field
+                                and item.field_path
+                                == (
+                                    f"$.records[{extraction_link.output_record_ordinal}]"
+                                    f".data.{error_field}"
+                                )
+                                and item.evidence_fragment_id in manifest["fragment_ids"]
+                                for item in numeric_links
+                            )
+                        )
+                    except (TypeError, ValueError):
+                        numeric_contract_integrity = False
             metric_values_valid = bool(
                 raw_metric_present
                 and isinstance(observation.normalized_value, dict)
@@ -739,6 +1507,8 @@ class TrustService:
                 and extraction_manifest_integrity
                 and extraction_input_hash_matches
                 and schema_contract_integrity
+                and numeric_contract_integrity
+                and temporal_contract_integrity
                 and cited_fragments_in_manifest
                 and panel_settings is not None
                 and not panel_settings.get("constants")
@@ -856,7 +1626,10 @@ class TrustService:
                 revision_lineage_integrity and revision_policy_supported
             )
 
-        if calculation is not None:
+        if calculation_integrity is not None:
+            calculation_engine_trusted = calculation_integrity["engine_supported"]
+            calculation_replay_matches = calculation_integrity["replay_matches"]
+        elif calculation is not None:
             calculation_engine_trusted = (
                 calculation.engine_version in TRUSTED_CALCULATION_ENGINE_VERSIONS
             )
@@ -906,12 +1679,22 @@ class TrustService:
             "extraction": extraction_integrity,
             "revision": revision_integrity,
             "calculation": bool(
-                calculation_replay_matches and calculation_engine_trusted
+                calculation_integrity["accepted"]
+                if calculation_integrity is not None
+                else calculation_replay_matches and calculation_engine_trusted
             ) if calculation is not None else None,
+            "conversion": (
+                conversion_integrity["accepted"]
+                if conversion_integrity is not None
+                else None
+            ),
         }.get(origin_kind)
         origin_integrity = bool(origin_count == 1 and lineage_integrity is True)
         return {
             "calculation": calculation,
+            "calculation_integrity": calculation_integrity,
+            "conversion": conversion,
+            "conversion_integrity": conversion_integrity,
             "origin_count": origin_count,
             "origin_kind": origin_kind,
             "origin_integrity": origin_integrity,
@@ -933,6 +1716,7 @@ class TrustService:
                 calculation.engine_version if calculation is not None else None
             ),
             "calculation_engine_trusted": calculation_engine_trusted,
+            "numeric_contract_integrity": numeric_contract_integrity,
         }
 
     async def geography_integrity(
@@ -1135,6 +1919,7 @@ class TrustService:
                     artifact_cache=artifact_cache,
                     replay_cache=replay_cache,
                 )
+                numeric = await self._numeric_integrity(peer)
                 origin = await self._origin_integrity(peer, evidence)
                 state_eligible = peer.trust_state not in {
                     TrustState.REJECTED,
@@ -1148,6 +1933,7 @@ class TrustService:
                     and evidence["fragment_integrity"]
                     and evidence["locator_replay_integrity"]
                     and evidence["snapshot_states_eligible"]
+                    and numeric["accepted"]
                     and origin["origin_integrity"]
                 )
                 all_peers_trusted = all_peers_trusted and peer_ok
@@ -1165,6 +1951,7 @@ class TrustService:
                     "snapshot_states_eligible": evidence[
                         "snapshot_states_eligible"
                     ],
+                    "numeric_integrity": numeric,
                     "origin_kind": origin["origin_kind"],
                     "origin_count": origin["origin_count"],
                     "origin_integrity": origin["origin_integrity"],
@@ -1256,7 +2043,48 @@ class TrustService:
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if replacement is not None or assessment.validation_run_id is None:
+        if replacement is not None:
+            return False
+        numeric = await self._numeric_integrity(observation)
+        if not numeric["accepted"]:
+            return False
+        conversion = (
+            await self.db.execute(
+                select(ConversionRun)
+                .where(ConversionRun.output_observation_id == observation.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if conversion is not None:
+            if (
+                assessment.validation_run_id is not None
+                or assessment.calculation_run_id is not None
+                or assessment.conversion_run_id != conversion.id
+            ):
+                return False
+            replay = await self._conversion_integrity(conversion, observation)
+            return bool(replay["accepted"])
+        calculation = (
+            await self.db.execute(
+                select(CalculationRun)
+                .where(CalculationRun.output_observation_id == observation.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if calculation is not None:
+            if (
+                assessment.validation_run_id is not None
+                or assessment.conversion_run_id is not None
+                or assessment.calculation_run_id != calculation.id
+            ):
+                return False
+            replay = await self._calculation_integrity(calculation, observation)
+            return bool(replay["accepted"])
+        if (
+            assessment.conversion_run_id is not None
+            or assessment.calculation_run_id is not None
+            or assessment.validation_run_id is None
+        ):
             return False
         validation = await self.db.get(
             ValidationRun,
@@ -1276,19 +2104,7 @@ class TrustService:
         )
         if not validation_replay.get("accepted") or not target_peer.get("accepted"):
             return False
-        calculation = (
-            await self.db.execute(
-                select(CalculationRun)
-                .where(CalculationRun.output_observation_id == observation.id)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if calculation is None:
-            return assessment.calculation_run_id is None
-        return bool(
-            assessment.calculation_run_id == calculation.id
-            and calculation.engine_version in TRUSTED_CALCULATION_ENGINE_VERSIONS
-        )
+        return True
 
     async def assess(
         self,
@@ -1320,8 +2136,10 @@ class TrustService:
             )
         ).scalar_one_or_none()
         evidence = await self._evidence_integrity(observation)
+        numeric = await self._numeric_integrity(observation)
         origin = await self._origin_integrity(observation, evidence)
         calculation: CalculationRun | None = origin["calculation"]
+        conversion: ConversionRun | None = origin["conversion"]
         validation_replay = (
             await self._replay_validation(validation) if validation else None
         )
@@ -1363,6 +2181,13 @@ class TrustService:
             reasons.append("LOCATOR_REPLAY_NOT_PROVEN")
         if not evidence["snapshot_states_eligible"]:
             reasons.append("EVIDENCE_SNAPSHOT_STATE_INELIGIBLE")
+        if not numeric["recorded"]:
+            reasons.append("FROZEN_NUMERIC_VALUE_REQUIRED")
+        elif not numeric["accepted"]:
+            if numeric["uncertainty_kind"] == "unknown":
+                reasons.append("UNKNOWN_UNCERTAINTY_NOT_ELIGIBLE")
+            else:
+                reasons.append("NUMERIC_UNCERTAINTY_REPLAY_FAILED")
         if origin["origin_count"] != 1:
             reasons.append("UNAMBIGUOUS_OBSERVATION_ORIGIN_REQUIRED")
         elif not origin["origin_integrity"]:
@@ -1401,8 +2226,19 @@ class TrustService:
             reasons.append("MANUAL_REVISION_ATTESTATION_NOT_SUPPORTED")
         if calculation is not None and not origin["calculation_engine_trusted"]:
             reasons.append("CALCULATION_ENGINE_NOT_TRUSTED_BY_CURRENT_POLICY")
+        if (
+            calculation is not None
+            and origin["calculation_integrity"] is not None
+            and not origin["calculation_integrity"]["accepted"]
+        ):
+            reasons.append("CALCULATION_REPLAY_NOT_ACCEPTED")
+        if conversion is not None and not origin["conversion_integrity"]["accepted"]:
+            reasons.append("CONVERSION_REPLAY_NOT_ACCEPTED")
 
-        if validation is None:
+        if conversion is not None or calculation is not None:
+            if validation is not None:
+                reasons.append("DERIVATION_MUST_USE_FROZEN_INPUT_ASSESSMENTS")
+        elif validation is None:
             reasons.append("PASSED_VALIDATION_REQUIRED")
         else:
             assert validation_replay is not None
@@ -1437,6 +2273,7 @@ class TrustService:
             observation_id=observation.id,
             validation_run_id=validation.id if validation else None,
             calculation_run_id=calculation.id if calculation else None,
+            conversion_run_id=conversion.id if conversion else None,
             review_decision_id=review_decision.id if review_decision else None,
             eligible=not reasons,
             reason_codes=reasons or ["ELIGIBLE_UNDER_POLICY"],
@@ -1467,6 +2304,7 @@ class TrustService:
                 "snapshot_state_by_fragment": evidence[
                     "snapshot_state_by_fragment"
                 ],
+                "numeric_integrity": numeric,
                 "extraction_lineage_integrity": origin[
                     "extraction_lineage_integrity"
                 ],
@@ -1504,6 +2342,9 @@ class TrustService:
                 "calculation_engine_trusted": origin[
                     "calculation_engine_trusted"
                 ],
+                "calculation_integrity": origin["calculation_integrity"],
+                "conversion_run_recorded": conversion is not None,
+                "conversion_integrity": origin["conversion_integrity"],
                 "validation_state": validation.state.value if validation else None,
                 "validation_replay": validation_replay,
                 "human_review_outcome": (

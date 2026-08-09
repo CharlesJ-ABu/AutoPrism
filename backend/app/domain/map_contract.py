@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import math
+from decimal import Decimal
 from typing import Any
 
 from app.domain.evidence import sha256_json
@@ -18,7 +19,7 @@ def _valid_position(value: Any) -> bool:
         return False
     longitude, latitude = value
     if any(
-        isinstance(item, bool) or not isinstance(item, (int, float))
+        isinstance(item, bool) or not isinstance(item, (int, float, Decimal))
         for item in value
     ):
         return False

@@ -6,20 +6,17 @@ The M6 current-worktree browser gate and the `trusted-insight-map-v1` dual-map
 follow-up passed on 2026-08-10. Baselines and exact results are recorded under
 `docs/visual-baselines/2026-08-10/` and `V2_TESTING.md`.
 
-## M7 — Units, currency and uncertainty
+## M7 follow-ups
 
-- General deterministic unit, currency and time-basis conversion registry.
-- Explicit conversion-run lineage that freezes source/target units, rates,
-  effective timestamps, formulas and code/engine versions.
-- Deterministic precision and rounding policies.
-- Error bounds, propagation plans and reproducible error checks.
-- A trusted deterministic calculation engine version and policy allowlist only
-  after unit/conversion/error replay is complete.
-- Migration, API, Trust, L2 and UI tests proving conversions cannot silently
-  change comparison scope or introduce default values.
+M7's fixed registry, bounded Decimal engine, direct/inverse evidence-bound FX,
+immutable conversion lineage and Trust replay are implemented. Remaining scope
+is deliberately separate:
 
-Until M7 is complete, Decimal calculation runs are stored as UNVERIFIED and no
-unit/currency/error capability is represented as trusted.
+- dimensional algebra for multiply/divide and compound units;
+- triangular FX, if a future policy can freeze and replay every rate leg;
+- a reviewed FX-rate discovery/import workflow (never automatic nearest-rate use);
+- derived geography propagation under its own evidence contract;
+- standalone replay-report endpoints for external auditors.
 
 ## V2 next
 

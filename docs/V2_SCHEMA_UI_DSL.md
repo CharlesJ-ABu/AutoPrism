@@ -18,6 +18,10 @@ A panel Schema must:
 - have root type `object`;
 - declare at least one property and an explicit `required` array;
 - declare `x-unit` or `x-unitless: true` on every numeric property;
+- use only a code from the frozen `unit-registry-v1` when `x-unit` is present;
+- declare `x-currency` as an uppercase ISO-style three-letter code for money;
+- declare numeric `x-uncertainty` as `exact`, `source_absolute_field`, or
+  `unknown` (absence is treated as unknown, never zero);
 - provide `x-autoprism.time_dimension`;
 - provide `x-autoprism.geographic_dimension`;
 - provide `x-autoprism.aggregation`;
@@ -25,6 +29,52 @@ A panel Schema must:
 
 Units, time basis, geography and aggregation are data semantics. They are not
 visual labels and must not be inferred by the renderer.
+
+Example bounded numeric claim:
+
+```json
+{
+  "revenue": {
+    "type": "number",
+    "x-unit": "million_currency",
+    "x-currency": "USD",
+    "x-uncertainty": {
+      "kind": "source_absolute_field",
+      "field": "revenue_error"
+    }
+  },
+  "revenue_error": {
+    "type": "number",
+    "x-unit": "million_currency",
+    "x-currency": "USD",
+    "x-uncertainty": {"kind": "exact"}
+  }
+}
+```
+
+The referenced error field must exist and be required. Conversion targets are
+also frozen Schema fields; the caller cannot rename a unit, currency or metric
+outside that contract.
+
+An executable conversion time basis uses `time-scope-v1` rather than a
+descriptive label:
+
+```json
+{
+  "x-autoprism": {
+    "time_dimension": {
+      "contract_version": "time-scope-v1",
+      "kind": "instant",
+      "field": "reported_at"
+    }
+  }
+}
+```
+
+The named field must be a required string containing ISO-8601 time with an
+explicit UTC offset. `period_end` uses `field`; `period_average` uses required
+`start_field` and `end_field`. Legacy descriptive strings remain display
+metadata and provide no currency-conversion authority.
 
 ### Executable geography for the Shell map
 

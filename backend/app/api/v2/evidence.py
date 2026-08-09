@@ -16,6 +16,7 @@ from app.domain.panel_schema import validate_observation_contract
 from app.models.dashboards import ExtractionRun, PanelVersion
 from app.models.evidence import (
     CalculationRun,
+    ConversionRun,
     EvidenceArtifact,
     EvidenceFragment,
     ExtractionRunInputSet,
@@ -23,6 +24,7 @@ from app.models.evidence import (
     ObservationEvidenceLink,
     ObservationEvidenceSet,
     ObservationExtractionLink,
+    ObservationNumericValue,
     ObservationRevision,
     SourceSnapshot,
     TrustAssessment,
@@ -184,6 +186,24 @@ async def _serialize_observations(
     calculation_by_output = {
         item.output_observation_id: item for item in calculation_rows
     }
+    conversion_rows = (
+        await db.execute(
+            select(ConversionRun).where(
+                ConversionRun.output_observation_id.in_(observation_ids)
+            )
+        )
+    ).scalars().all()
+    conversion_by_output = {
+        item.output_observation_id: item for item in conversion_rows
+    }
+    numeric_rows = (
+        await db.execute(
+            select(ObservationNumericValue).where(
+                ObservationNumericValue.observation_id.in_(observation_ids)
+            )
+        )
+    ).scalars().all()
+    numeric_by_observation = {item.observation_id: item for item in numeric_rows}
 
     # Keep the original single-evidence object during the compatibility window,
     # but never promote it into the new frozen evidence_refs array when the set
@@ -233,13 +253,24 @@ async def _serialize_observations(
         extraction = extraction_by_observation.get(observation.id)
         revision = revision_by_replacement.get(observation.id)
         calculation = calculation_by_output.get(observation.id)
+        conversion = conversion_by_output.get(observation.id)
+        numeric = numeric_by_observation.get(observation.id)
         origin_count = sum(
-            item is not None for item in (calculation, revision, extraction)
+            item is not None
+            for item in (calculation, conversion, revision, extraction)
         )
         if origin_count > 1:
             origin_kind = "legacy"
             lineage_state = "incomplete"
             parent_observation_ids = []
+        elif conversion is not None:
+            origin_kind = "conversion"
+            lineage_state = "derived"
+            parent_observation_ids = [str(conversion.input_observation_id)] + (
+                [str(conversion.fx_rate_observation_id)]
+                if conversion.fx_rate_observation_id
+                else []
+            )
         elif calculation is not None:
             origin_kind = "calculation"
             lineage_state = "derived"
@@ -326,6 +357,21 @@ async def _serialize_observations(
                 "normalized_value": observation.normalized_value,
                 "unit": observation.unit,
                 "currency": observation.currency,
+                "numeric": (
+                    {
+                        "value": str(numeric.value),
+                        "uncertainty_kind": numeric.uncertainty_kind.value,
+                        "absolute_error": (
+                            str(numeric.absolute_error)
+                            if numeric.absolute_error is not None
+                            else None
+                        ),
+                        "uncertainty_basis": numeric.uncertainty_basis,
+                        "evidence_count": numeric.evidence_count,
+                    }
+                    if numeric is not None
+                    else None
+                ),
                 "observed_at": observation.observed_at,
                 "period_start": observation.period_start,
                 "period_end": observation.period_end,
@@ -358,7 +404,11 @@ async def _serialize_observations(
                             if calculation is not None and origin_count == 1
                             else None
                         ),
-                        "conversion_run_id": None,
+                        "conversion_run_id": (
+                            str(conversion.id)
+                            if conversion is not None and origin_count == 1
+                            else None
+                        ),
                     },
                     "evidence_refs": evidence_refs,
                     "evidence_set_complete": evidence_set_complete,

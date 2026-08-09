@@ -26,14 +26,14 @@ retained to show the original gap and must not be read as current M6 status.
 | Tests | V1 build and crawler gaps are documented | 23 backend tests, migration checks, frontend build, Compose and browser record dated 2026-07-25 | Historical evidence only until re-run in the current worktree |
 | Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Historical gap; dedicated Schema/UI DSL, trust, testing and release documents now exist |
 
-### Current delta through M6.1
+### Current delta through M7
 
 - The V1-continuity cockpit and split component system remain implemented.
 - `evidence-extraction-v3` now freezes exact ordered extraction inputs.
 - Normalized observation evidence sets support multiple claims and fragments;
   direct observations use exact run/record/field associations.
-- `numeric-v2-source-artifact-publisher` and
-  `trust-eligibility-v3-validation-replay` replace the earlier source-only and
+- `numeric-v3-bounded-source-artifact-publisher` and
+  `trust-eligibility-v4-bounded-conversion-replay` replace the earlier source-only and
   v1-era policy descriptions.
 - Fresh and backed-up populated migration gates passed. The real six-observation
   audit produced 3 exact links and 3 unresolved without guessed backfill.
@@ -41,6 +41,9 @@ retained to show the original gap and must not be read as current M6 status.
   increased the current complete suite to 44/44.
 - `geo-scope-v1`, immutable coordinate claims and `trusted-insight-map-v1`
   now power real 3D/2D maps without decorative database facts.
+- `unit-registry-v1`, bounded Decimal values and immutable conversion runs now
+  support replayable unit/direct-FX conversion and derived eligibility without
+  default uncertainty or caller-supplied rates.
 - New 1440×800 V1/V2 and 390×844 V2 baselines, console, responsive and
   visual/interaction smoke passed on the current bundle.
 
@@ -70,7 +73,7 @@ retained to show the original gap and must not be read as current M6 status.
 | M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Complete |
 | M6 Exact lineage and trust replay | v3 input manifest, normalized claim evidence, exact origins, three-axis validation and dynamic peer replay | `0005`, fresh/populated gates, 6/3/3 audit, 39/39 backend plus 2026-08-10 current visual closeout | Complete |
 | M6.1 Trusted dual insight map | Schema-bound geography, immutable coordinate citations, current-only L2 map contract and 3D/2D engines | `0006`, fresh/populated gates, 44/44 backend, frontend/Compose/browser baselines | Complete |
-| M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Not started |
+| M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Complete; dimensional multiply/divide and triangular FX explicitly deferred |
 
 ## Feature acceptance ledger
 
@@ -92,8 +95,8 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Cross-source validation | explicit tolerances plus independent source/artifact/frozen-publisher rule | view and run | done | done |
 | Human review | append-only single-head decisions | queue and superseding decisions | done | done; actor identity remains deferred |
 | L1 → INFO lineage | normalized claim evidence plus exact extraction association for new v3 rows | complete trace; unresolved history is explicit | done | done for v3; 3 historical rows intentionally unresolved |
-| Deterministic calculations | scoped Decimal engine and replay records | view and run plans | done | operational/replayable but not trust eligible until M7 |
-| Unit conversion registry | missing | missing | missing | missing |
+| Deterministic calculations | bounded Decimal engine, normalized trusted inputs and replay records | view and run eligible plans | done | add/subtract/percent/weighted-average eligible after full replay |
+| Unit conversion registry | fixed versioned dimension/semantic registry | compatible-target selection and conversion history | done | no free aliases or caller factors |
 | L2 stored-data-only analysis | normalized eligible inputs and immutable hash | connected with explicit unavailable state | done | done for deterministic evidence summary |
 | V1-style insight map | immutable `geo-scope-v1` plus current `trusted-insight-map-v1` replay | real 3D globe/2D tactical engines and honest states | done | done; reference data correctly has zero qualified features |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |

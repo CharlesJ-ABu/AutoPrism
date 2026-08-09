@@ -2,6 +2,37 @@
 
 Last full validation: 2026-08-10 (Asia/Shanghai).
 
+## M7 bounded numeric milestone result
+
+The final disposable PostgreSQL suite passed 55/55 tests with database tests
+enabled. New coverage includes fixed-context Decimal arithmetic, semantic unit
+compatibility, direct/inverse FX interval propagation, unknown-uncertainty
+rejection, frozen calculation/conversion inputs, dynamic derived-assessment
+replay, exact JSON Decimal persistence, cited `time-scope-v1`, strict output
+Schema/quantum contracts and conversion API validation. The full integration
+path proves a current eligible USD amount plus current eligible USD/CNY rate
+produces and independently replays the frozen CNY observation.
+
+Migration `0007_v2_numeric_conversion` passed zero-to-head, downgrade to
+`0006`, re-upgrade to `0007`, and `alembic check` on a new empty database. A
+restored copy of the real six-observation database upgraded with the original
+count/digest unchanged and zero inferred numeric, calculation-input or
+conversion rows. Frontend typecheck/build passed (2,887 modules) and the
+production dependency audit reported zero vulnerabilities.
+
+Current Compose/browser smoke passed after the real database upgrade:
+
+- `/health`, `/ready`, unit-registry and conversion-history endpoints returned 200;
+- all five services were healthy/running and recent logs contained no failures;
+- the evidence drawer loaded `unit-registry-v1` and the M7 conversion tab from
+  real APIs; with zero eligible legacy inputs it disabled execution and showed
+  the contractual empty state;
+- historical rows displayed `LEGACY / 未冻结`, not zero uncertainty;
+- 1440×800 desktop and 390×844 mobile baselines were captured as
+  `v2-m7-conversion-1440x800.png` and `v2-m7-conversion-390x844.png`;
+- mobile `scrollWidth=384` at `innerWidth=390`, with the drawer fully inside the
+  viewport; browser console warning/error count was zero.
+
 ## Trusted-map milestone result
 
 The final disposable PostgreSQL suite passed 44/44 tests with database tests
@@ -48,7 +79,13 @@ comes from the full disposable-PostgreSQL run, not the skipped fast run.
 
 ## Database migrations
 
-Current revision: `0006_v2_trusted_insight_map`.
+Current revision: `0007_v2_numeric_conversion`.
+
+The M7 migration adds only new immutable numeric/uncertainty, normalized
+calculation-input and conversion histories plus the Trust foreign key. It
+does not backfill an uncertainty value from a historical normalized JSON
+number. Empty disposable downgrade/re-upgrade is supported; any populated M7
+history makes downgrade fail closed.
 
 The 2026-08-10 `0006` gate:
 

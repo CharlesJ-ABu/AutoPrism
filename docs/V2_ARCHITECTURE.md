@@ -98,21 +98,24 @@ A core metric is not trusted unless:
 - a direct extraction is `evidence-extraction-v3` and deterministic output
   replay matches exactly; a non-deterministic model output remains stored but
   cannot become eligible without a future evidence-bound attestation contract;
-- cross-source validation under `numeric-v2-source-artifact-publisher` passes
+- cross-source validation under `numeric-v3-bounded-source-artifact-publisher` passes
   with at least two independent source-definition, artifact and frozen
   publisher identities;
 - every validation peer is still a current observation head and independently
   passes artifact, locator, claim and origin replay;
 - the latest assessment is accepted under
-  `trust-eligibility-v3-validation-replay`.
+  `trust-eligibility-v4-bounded-conversion-replay`.
 
 LLMs may discover sources, extract candidates, propose formulas, and explain
 results. LLMs do not execute authoritative arithmetic or invent missing values.
-Human review is append-only audit evidence, but current M6 policy does not let
+Human review is append-only audit evidence, but current policy does not let
 an approval replace a failed PASSED validation or unreplayable extraction.
-Decimal calculation runs are stored and replayed, while the current trust
-engine allowlist remains empty until M7 defines unit/currency conversion and
-error semantics.
+M7 adds immutable `ObservationNumericValue`, uncertainty evidence,
+`CalculationRunInput` and `ConversionRun` histories. Only
+`decimal-v2-bounded` and `conversion-v1-bounded` can pass current Trust replay;
+old Decimal labels remain visible but ineligible. Unit conversion uses the fixed
+`unit-registry-v1`; FX conversion references current eligible stored rates and
+never accepts a caller-provided rate.
 
 ## Storage and deployment
 

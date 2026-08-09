@@ -1,6 +1,7 @@
 import asyncio
 import io
 import unittest
+from decimal import Decimal
 
 import httpx
 from openpyxl import Workbook
@@ -30,6 +31,17 @@ class AcquisitionParserTests(unittest.TestCase):
         self.assertEqual(len(result.records), 2)
         self.assertEqual(result.records[1].locator, {"pointer": "/Results/1"})
         self.assertEqual(result.records[1].fields, {"Make": "B"})
+        precise = parse_content(
+            "api",
+            b'{"value":0.12345678901234567890123456789}',
+            "application/json",
+            {},
+        )
+        self.assertEqual(
+            precise.records[0].fields["value"],
+            Decimal("0.12345678901234567890123456789"),
+        )
+        self.assertIn("0.12345678901234567890123456789", precise.records[0].text)
 
     def test_html_has_reproducible_css_locators(self):
         result = parse_html(

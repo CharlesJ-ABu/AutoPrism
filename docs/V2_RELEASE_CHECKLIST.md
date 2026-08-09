@@ -5,9 +5,9 @@ remains the unmodified, unauthenticated V1 local edition and is not a merge
 target.
 
 Current state on 2026-08-10: M6 lineage and its visual closeout pass. The
-evidence-bound dual-map follow-up also passes backend, migration, frontend,
-Compose and browser gates. Historical M1–M5 screenshots were not reused as
-current acceptance evidence.
+evidence-bound dual-map follow-up and M7 bounded numeric/conversion milestone
+pass backend, migration, frontend, Compose and browser gates. Historical M1–M5
+screenshots were not reused as current acceptance evidence.
 
 ## Required gates
 
@@ -26,10 +26,10 @@ current acceptance evidence.
   time, artifact SHA-256, text hash and locator.
 - [x] Observation revisions and review decisions are append-only and protected
   against lineage forks; human approval does not replace replayable trust proof.
-- [x] Validation rule `numeric-v2-source-artifact-publisher` requires explicit
+- [x] Validation rule `numeric-v3-bounded-source-artifact-publisher` requires explicit
   tolerances plus independent source, artifact and snapshot-frozen publisher
   identities.
-- [x] Trust policy `trust-eligibility-v3-validation-replay` replays every peer's
+- [x] Trust policy `trust-eligibility-v4-bounded-conversion-replay` replays every peer's
   current-head, evidence and origin integrity and rejects old rules,
   non-deterministic extraction and unsupported calculation/revision authority.
 - [x] Trust eligibility is append-only and dynamically rechecked; it does not
@@ -52,6 +52,22 @@ current acceptance evidence.
   legacy coordinates.
 - [x] `trusted-insight-map-v1` exposes only current assessment/geography replay;
   a stale assessment removes a feature while preserving immutable L2 history.
+- [x] Migration `0007_v2_numeric_conversion` preserves legacy observations
+  without inventing numeric/error rows and adds immutable numeric, calculation
+  input and conversion histories.
+- [x] `unit-registry-v1`, `decimal-v2-bounded` and `conversion-v1-bounded`
+  enforce fixed units, explicit HALF_EVEN quantum and conservative uncertainty.
+- [x] `numeric-v3-bounded-source-artifact-publisher` compares intervals and
+  `trust-eligibility-v4-bounded-conversion-replay` dynamically replays all
+  direct and derived input assessments.
+- [x] Currency conversion references a current eligible database rate with an
+  exact time basis; no caller factor, live/closest lookup or triangular path exists.
+- [x] Final M7 suite passed 55/55 on disposable PostgreSQL; zero-to-head,
+  empty downgrade/re-upgrade, populated-copy and drift gates passed.
+- [x] Real Compose database upgraded to `0007` after a readable backup; six
+  observations and their digest were unchanged, with zero inferred M7 rows.
+- [x] Desktop/mobile conversion-workspace smoke passed with no horizontal
+  overflow and no browser console warning/error.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
@@ -82,9 +98,8 @@ insight.
   are deferred product capabilities.
 - Three historical observations remain intentionally unresolved; pre-v3
   extraction runs cannot be retroactively promoted by attaching a new manifest.
-- M7 still must implement the general unit/currency/time-basis conversion
-  registry, deterministic rounding/error propagation and a trusted calculation
-  engine policy. Decimal calculation runs remain UNVERIFIED in M6.
+- Dimensional multiply/divide, compound units, triangular FX and derived
+  geography remain unavailable; current code rejects rather than approximates them.
 - Manual revisions remain ineligible until an evidence-bound human-attestation
   contract can be replayed.
 - Safe UI DSL currently supports stack, metric, table and provenance; custom

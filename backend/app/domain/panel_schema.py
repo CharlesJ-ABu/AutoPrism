@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from decimal import Decimal
 import math
 from typing import Any
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
+
+from app.domain.numeric import UNIT_REGISTRY, decimal_value
 
 
 @dataclass(frozen=True)
@@ -16,6 +20,7 @@ class SchemaIssue:
 
 
 GEO_SCOPE_CONTRACT_VERSION = "geo-scope-v1"
+TIME_SCOPE_CONTRACT_VERSION = "time-scope-v1"
 MAP_DISPLAY_TYPES = frozenset(
     {
         "MARKER",
@@ -29,6 +34,102 @@ MAP_DISPLAY_TYPES = frozenset(
 )
 POINT_DISPLAY_TYPES = frozenset({"MARKER", "HOTSPOT", "RIPPLE"})
 LINE_DISPLAY_TYPES = frozenset({"FLOW", "COMPARISON", "SHIELD_UP"})
+
+
+def _validate_temporal_mapping(
+    mapping: Any,
+    *,
+    properties: Mapping[str, Any],
+    required: set[str],
+) -> tuple[SchemaIssue, ...]:
+    if not isinstance(mapping, Mapping):
+        # Legacy panels may keep a descriptive string, but it has no executable
+        # time authority for currency conversion or trusted derivation.
+        return ()
+    path = "$.x-autoprism.time_dimension"
+    issues: list[SchemaIssue] = []
+    if set(mapping) - {"contract_version", "kind", "field", "start_field", "end_field"}:
+        issues.append(SchemaIssue(path, "time contract contains unsupported keys"))
+    if mapping.get("contract_version") != TIME_SCOPE_CONTRACT_VERSION:
+        issues.append(
+            SchemaIssue(
+                f"{path}.contract_version",
+                f"must equal {TIME_SCOPE_CONTRACT_VERSION!r}",
+            )
+        )
+    kind = mapping.get("kind")
+    if kind not in {"instant", "period_end", "period_average"}:
+        issues.append(SchemaIssue(f"{path}.kind", "unsupported time basis"))
+        return tuple(issues)
+    keys = ["field"] if kind in {"instant", "period_end"} else ["start_field", "end_field"]
+    for key in keys:
+        field = mapping.get(key)
+        definition = properties.get(field) if isinstance(field, str) else None
+        if not isinstance(field, str) or not isinstance(definition, Mapping):
+            issues.append(SchemaIssue(f"{path}.{key}", "must name a schema field"))
+        elif definition.get("type") != "string":
+            issues.append(SchemaIssue(f"{path}.{key}", "time field must be a string"))
+        elif field not in required:
+            issues.append(SchemaIssue(f"{path}.{key}", "time field must be required"))
+    return tuple(issues)
+
+
+def temporal_source_fields(schema: Mapping[str, Any]) -> tuple[str, ...]:
+    metadata = schema.get("x-autoprism")
+    mapping = metadata.get("time_dimension") if isinstance(metadata, Mapping) else None
+    if (
+        not isinstance(mapping, Mapping)
+        or mapping.get("contract_version") != TIME_SCOPE_CONTRACT_VERSION
+    ):
+        return ()
+    kind = mapping.get("kind")
+    keys = ("field",) if kind in {"instant", "period_end"} else ("start_field", "end_field")
+    return tuple(
+        field for field in (mapping.get(key) for key in keys) if isinstance(field, str)
+    )
+
+
+def _utc_naive(value: Any) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("time scope fields must be ISO-8601 strings")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("time scope fields must be ISO-8601 strings") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("time scope fields must include an explicit UTC offset")
+    return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def build_temporal_scope(
+    schema: Mapping[str, Any],
+    data: Mapping[str, Any],
+) -> dict[str, datetime | None]:
+    result: dict[str, datetime | None] = {
+        "observed_at": None,
+        "period_start": None,
+        "period_end": None,
+    }
+    metadata = schema.get("x-autoprism")
+    mapping = metadata.get("time_dimension") if isinstance(metadata, Mapping) else None
+    if not isinstance(mapping, Mapping):
+        return result
+    if mapping.get("contract_version") != TIME_SCOPE_CONTRACT_VERSION:
+        raise ValueError("time scope contract version is unsupported")
+    kind = mapping.get("kind")
+    if kind == "instant":
+        result["observed_at"] = _utc_naive(data.get(mapping.get("field")))
+    elif kind == "period_end":
+        result["period_end"] = _utc_naive(data.get(mapping.get("field")))
+    elif kind == "period_average":
+        start = _utc_naive(data.get(mapping.get("start_field")))
+        end = _utc_naive(data.get(mapping.get("end_field")))
+        if start > end:
+            raise ValueError("period start must not be after period end")
+        result["period_start"], result["period_end"] = start, end
+    else:
+        raise ValueError("time scope basis is unsupported")
+    return result
 
 
 def _validate_geographic_mapping(
@@ -147,13 +248,14 @@ def geographic_source_fields(schema: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(field for field in fields if isinstance(field, str)))
 
 
-def _coordinate(value: Any, *, latitude: bool) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+def _coordinate(value: Any, *, latitude: bool) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         raise ValueError("map coordinates must be finite JSON numbers")
-    parsed = float(value)
-    if not math.isfinite(parsed):
-        raise ValueError("map coordinates must be finite JSON numbers")
-    lower, upper = (-90.0, 90.0) if latitude else (-180.0, 180.0)
+    parsed = decimal_value(value)
+    lower, upper = (Decimal("-90"), Decimal("90")) if latitude else (
+        Decimal("-180"),
+        Decimal("180"),
+    )
     if parsed < lower or parsed > upper:
         raise ValueError(
             "latitude must be between -90 and 90"
@@ -218,7 +320,7 @@ def build_geographic_scope(
         raw_ring = data.get(polygon_field) if isinstance(polygon_field, str) else None
         if not isinstance(raw_ring, list) or len(raw_ring) < 4:
             raise ValueError("map polygon must contain at least four positions")
-        ring: list[list[float]] = []
+        ring: list[list[Decimal]] = []
         for position in raw_ring:
             if not isinstance(position, (list, tuple)) or len(position) != 2:
                 raise ValueError("map polygon positions must be [longitude, latitude]")
@@ -291,6 +393,14 @@ def validate_panel_schema(schema: Mapping[str, Any]) -> tuple[SchemaIssue, ...]:
                     required=required_fields,
                 )
             )
+        if "time_dimension" in metadata:
+            issues.extend(
+                _validate_temporal_mapping(
+                    metadata["time_dimension"],
+                    properties=properties,
+                    required=required_fields,
+                )
+            )
 
     for name, definition in properties.items():
         path = f"$.properties.{name}"
@@ -298,11 +408,76 @@ def validate_panel_schema(schema: Mapping[str, Any]) -> tuple[SchemaIssue, ...]:
             issues.append(SchemaIssue(path, "property type is required"))
             continue
         if definition.get("type") in {"number", "integer"}:
-            if "x-unit" not in definition and not definition.get("x-unitless"):
+            has_unit = isinstance(definition.get("x-unit"), str)
+            is_unitless = definition.get("x-unitless") is True
+            if has_unit == is_unitless:
                 issues.append(
-                    SchemaIssue(path, "numeric properties require x-unit or x-unitless")
+                    SchemaIssue(
+                        path,
+                        "numeric properties require exactly one of x-unit or x-unitless",
+                    )
                 )
+            if has_unit and definition["x-unit"] not in UNIT_REGISTRY:
+                issues.append(SchemaIssue(path, "x-unit is absent from the frozen registry"))
+            currency = definition.get("x-currency")
+            if currency is not None and (
+                not isinstance(currency, str)
+                or len(currency) != 3
+                or currency.upper() != currency
+            ):
+                issues.append(SchemaIssue(path, "x-currency must be a three-letter uppercase code"))
+            uncertainty = definition.get("x-uncertainty", {"kind": "unknown"})
+            if not isinstance(uncertainty, dict):
+                issues.append(SchemaIssue(path, "x-uncertainty must be an object"))
+                continue
+            uncertainty_kind = uncertainty.get("kind")
+            if uncertainty_kind not in {"exact", "source_absolute_field", "unknown"}:
+                issues.append(SchemaIssue(path, "x-uncertainty kind is unsupported"))
+            if uncertainty_kind == "source_absolute_field":
+                error_field = uncertainty.get("field")
+                error_definition = properties.get(error_field)
+                if (
+                    not isinstance(error_field, str)
+                    or not isinstance(error_definition, dict)
+                    or error_definition.get("type") not in {"number", "integer"}
+                ):
+                    issues.append(
+                        SchemaIssue(path, "uncertainty field must name a numeric property")
+                    )
+                elif error_field not in required_fields:
+                    issues.append(SchemaIssue(path, "uncertainty field must be required"))
+            elif set(uncertainty) != {"kind"}:
+                issues.append(SchemaIssue(path, "x-uncertainty contains unsupported keys"))
     return tuple(issues)
+
+
+def numeric_uncertainty_contract(
+    definition: Mapping[str, Any],
+    data: Mapping[str, Any],
+) -> tuple[str, Any | None, dict[str, Any]]:
+    """Resolve a schema-declared uncertainty without inventing a default error."""
+
+    uncertainty = definition.get("x-uncertainty", {"kind": "unknown"})
+    if not isinstance(uncertainty, Mapping):
+        raise ValueError("numeric uncertainty contract must be an object")
+    kind = uncertainty.get("kind", "unknown")
+    if kind == "exact":
+        return "exact", 0, {"kind": "schema_exact"}
+    if kind == "unknown":
+        return "unknown", None, {"kind": "schema_unknown"}
+    if kind != "source_absolute_field":
+        raise ValueError("numeric uncertainty kind is unsupported")
+    field = uncertainty.get("field")
+    if not isinstance(field, str) or field not in data:
+        raise ValueError("source uncertainty field is missing")
+    error = decimal_value(data[field])
+    if error < 0:
+        raise ValueError("source absolute uncertainty must not be negative")
+    return (
+        "bounded",
+        error,
+        {"kind": "source_absolute_field", "field": field},
+    )
 
 
 def validate_panel_payload(
@@ -322,7 +497,10 @@ def validate_panel_payload(
     ]
 
     def reject_non_finite(value: Any, path: str) -> None:
-        if isinstance(value, float) and not math.isfinite(value):
+        if (
+            isinstance(value, Decimal)
+            and not value.is_finite()
+        ) or (isinstance(value, float) and not math.isfinite(value)):
             issues.append(SchemaIssue(path, "numeric values must be finite"))
         elif isinstance(value, Mapping):
             for key, item in value.items():
@@ -371,7 +549,8 @@ def validate_observation_contract(
         value = container["value"]
         if (
             isinstance(value, bool)
-            or not isinstance(value, (int, float))
+            or not isinstance(value, (int, float, Decimal))
+            or (isinstance(value, Decimal) and not value.is_finite())
             or (isinstance(value, float) and not math.isfinite(value))
         ):
             issues.append(

@@ -14,8 +14,11 @@ from app.domain.evidence import (
     CalculationOperation,
     normalize_calculation_contract,
 )
+from app.domain.numeric import unit_registry_payload
 from app.models.evidence import (
     CalculationRun,
+    ConversionKind,
+    ConversionRun,
     MetricObservation,
     ReviewCase,
     ReviewDecision,
@@ -41,6 +44,7 @@ class CalculationRequest(BaseModel):
     input_observation_ids: list[uuid.UUID] = Field(min_length=1)
     output_metric_key: str
     output_unit: str | None = None
+    output_quantum: str = Field(min_length=1)
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -53,6 +57,31 @@ class CalculationRequest(BaseModel):
             [0] * len(self.input_observation_ids),
             self.parameters,
         )
+        return self
+
+
+class ConversionRequest(BaseModel):
+    input_observation_id: uuid.UUID
+    kind: ConversionKind
+    output_metric_key: str = Field(min_length=1, max_length=255)
+    output_quantum: str = Field(min_length=1)
+    to_unit: str | None = None
+    to_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    fx_rate_observation_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_kind_fields(self):
+        if self.kind is ConversionKind.UNIT:
+            if not self.to_unit or self.to_currency or self.fx_rate_observation_id:
+                raise ValueError("unit conversion requires only to_unit")
+        elif (
+            not self.to_currency
+            or self.to_unit is not None
+            or self.fx_rate_observation_id is None
+        ):
+            raise ValueError(
+                "currency conversion requires to_currency and fx_rate_observation_id"
+            )
         return self
 
 
@@ -102,6 +131,7 @@ async def calculate(
             input_observation_ids=payload.input_observation_ids,
             output_metric_key=payload.output_metric_key,
             output_unit=payload.output_unit,
+            output_quantum=payload.output_quantum,
             parameters=payload.parameters,
         )
     except LookupError as exc:
@@ -111,6 +141,38 @@ async def calculate(
     return {
         "observation_id": str(observation.id),
         "calculation_run_id": str(run.id),
+        "result": run.result,
+        "replay_hash": run.replay_hash,
+    }
+
+
+@router.get("/unit-registry")
+async def get_unit_registry():
+    return unit_registry_payload()
+
+
+@router.post("/conversions")
+async def create_conversion(
+    payload: ConversionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        observation, run = await VerificationService(db).convert(
+            input_observation_id=payload.input_observation_id,
+            kind=payload.kind,
+            output_metric_key=payload.output_metric_key,
+            output_quantum=payload.output_quantum,
+            to_unit=payload.to_unit,
+            to_currency=payload.to_currency,
+            fx_rate_observation_id=payload.fx_rate_observation_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {
+        "observation_id": str(observation.id),
+        "conversion_run_id": str(run.id),
         "result": run.result,
         "replay_hash": run.replay_hash,
     }
@@ -164,6 +226,50 @@ async def list_calculations(
             "parameters": run.parameters,
             "result": run.result,
             "engine_version": run.engine_version,
+            "replay_hash": run.replay_hash,
+            "created_at": run.created_at,
+        }
+        for run, output in rows
+    ]
+
+
+@router.get("/conversions")
+async def list_conversions(
+    panel_version_key: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = select(ConversionRun, MetricObservation).join(
+        MetricObservation,
+        ConversionRun.output_observation_id == MetricObservation.id,
+    )
+    if panel_version_key:
+        statement = statement.where(
+            MetricObservation.panel_version_key == panel_version_key
+        )
+    rows = (
+        await db.execute(
+            statement.order_by(desc(ConversionRun.created_at)).limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": str(run.id),
+            "output_observation_id": str(run.output_observation_id),
+            "output_metric_key": output.metric_key,
+            "input_observation_id": str(run.input_observation_id),
+            "input_trust_assessment_id": str(run.input_trust_assessment_id),
+            "kind": run.kind.value,
+            "fx_rate_observation_id": (
+                str(run.fx_rate_observation_id)
+                if run.fx_rate_observation_id
+                else None
+            ),
+            "registry_version": run.registry_version,
+            "engine_version": run.engine_version,
+            "plan": run.plan,
+            "input_snapshot": run.input_snapshot,
+            "result": run.result,
             "replay_hash": run.replay_hash,
             "created_at": run.created_at,
         }
@@ -295,6 +401,11 @@ async def assess_observation(
             if assessment.calculation_run_id
             else None
         ),
+        "conversion_run_id": (
+            str(assessment.conversion_run_id)
+            if assessment.conversion_run_id
+            else None
+        ),
         "review_decision_id": (
             str(assessment.review_decision_id)
             if assessment.review_decision_id
@@ -357,6 +468,11 @@ async def list_assessments(
                 "calculation_run_id": (
                     str(assessment.calculation_run_id)
                     if assessment.calculation_run_id
+                    else None
+                ),
+                "conversion_run_id": (
+                    str(assessment.conversion_run_id)
+                    if assessment.conversion_run_id
                     else None
                 ),
                 "review_decision_id": (

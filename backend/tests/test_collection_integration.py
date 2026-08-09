@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,9 +25,12 @@ from app.models.evidence import (
     ObservationExtractionLink,
     ObservationGeography,
     ObservationGeographyEvidence,
+    ObservationNumericValue,
     SourceSnapshot,
     ValidationRun,
     VerificationState,
+    UncertaintyState,
+    ConversionKind,
 )
 from app.models.dashboards import (
     Dashboard,
@@ -337,7 +341,42 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         "type": "object",
                         "properties": {
                             "location": {"type": "string"},
-                            "sales": {"type": "integer", "x-unit": "vehicle"},
+                            "sales": {
+                                "type": "integer",
+                                "x-unit": "vehicle",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
+                            "sales_thousands": {
+                                "type": "number",
+                                "x-unit": "thousand_vehicle",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
+                            "sales_total": {
+                                "type": "number",
+                                "x-unit": "vehicle",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
+                            "revenue_usd": {
+                                "type": "number",
+                                "x-unit": "currency_unit",
+                                "x-currency": "USD",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
+                            "revenue_cny": {
+                                "type": "number",
+                                "x-unit": "currency_unit",
+                                "x-currency": "CNY",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
+                            "fx_usd_cny": {
+                                "type": "number",
+                                "x-unit": "currency_ratio",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
+                            "base_currency": {"type": "string"},
+                            "quote_currency": {"type": "string"},
+                            "rate_basis": {"type": "string"},
+                            "reported_at": {"type": "string"},
                             "latitude": {
                                 "type": "number",
                                 "x-unit": "degree_latitude",
@@ -350,11 +389,21 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         "required": [
                             "location",
                             "sales",
+                            "revenue_usd",
+                            "fx_usd_cny",
+                            "base_currency",
+                            "quote_currency",
+                            "rate_basis",
+                            "reported_at",
                             "latitude",
                             "longitude",
                         ],
                         "x-autoprism": {
-                            "time_dimension": "report",
+                            "time_dimension": {
+                                "contract_version": "time-scope-v1",
+                                "kind": "instant",
+                                "field": "reported_at",
+                            },
                             "geographic_dimension": {
                                 "contract_version": "geo-scope-v1",
                                 "display_type": "HOTSPOT",
@@ -364,6 +413,8 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                             },
                             "aggregation": {
                                 "sales": "sum",
+                                "revenue_usd": "sum",
+                                "fx_usd_cny": "latest",
                                 "latitude": "latest",
                                 "longitude": "latest",
                             },
@@ -386,6 +437,12 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         "field_mappings": {
                             "location": "location",
                             "sales": "sales",
+                            "revenue_usd": "revenue_usd",
+                            "fx_usd_cny": "fx_usd_cny",
+                            "base_currency": "base_currency",
+                            "quote_currency": "quote_currency",
+                            "rate_basis": "rate_basis",
+                            "reported_at": "reported_at",
                             "latitude": "latitude",
                             "longitude": "longitude",
                         },
@@ -396,6 +453,8 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await db.flush()
 
                 observation_ids = []
+                revenue_ids = []
+                fx_rate_ids = []
                 store = LocalArtifactStore(Path(temporary_directory))
                 for index, publisher in enumerate(("official-a", "official-b")):
                     source = SourceDefinition(
@@ -418,6 +477,10 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     await db.commit()
                     source_payload = (
                         '{"location":"Shenzhen","sales":42,'
+                        '"revenue_usd":100,"fx_usd_cny":7.2,'
+                        '"base_currency":"USD","quote_currency":"CNY",'
+                        '"rate_basis":"instant",'
+                        '"reported_at":"2026-08-10T00:00:00Z",'
                         '"latitude":22.5431,"longitude":114.0579,'
                         f'"source_marker":"{publisher}"}}'
                     ).encode()
@@ -443,13 +506,31 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     sales = next(
                         item for item in observations if item.metric_key == "sales"
                     )
+                    revenue = next(
+                        item
+                        for item in observations
+                        if item.metric_key == "revenue_usd"
+                    )
+                    fx_rate = next(
+                        item
+                        for item in observations
+                        if item.metric_key == "fx_usd_cny"
+                    )
                     observation_ids.append(sales.id)
+                    revenue_ids.append(revenue.id)
+                    fx_rate_ids.append(fx_rate.id)
 
                     geography = await db.get(ObservationGeography, sales.id)
                     self.assertEqual(geography.scope["contract_version"], "geo-scope-v1")
                     self.assertEqual(
                         geography.scope["geometry"],
-                        {"type": "Point", "coordinates": [114.0579, 22.5431]},
+                        {
+                            "type": "Point",
+                            "coordinates": [
+                                Decimal("114.0579"),
+                                Decimal("22.5431"),
+                            ],
+                        },
                     )
                     geography_links = (
                         await db.execute(
@@ -483,6 +564,129 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     validation_run_id=validation.id,
                 )
                 self.assertTrue(assessment.eligible)
+                second_assessment = await TrustService(
+                    db,
+                    artifact_store=store,
+                ).assess(
+                    observation_id=observation_ids[1],
+                    validation_run_id=validation.id,
+                )
+                self.assertTrue(second_assessment.eligible)
+                calculated, calculation_run = await VerificationService(db).calculate(
+                    operation="add",
+                    input_observation_ids=observation_ids,
+                    output_metric_key="sales_total",
+                    output_unit="vehicle",
+                    output_quantum="1",
+                    parameters={},
+                )
+                self.assertEqual(calculated.normalized_value, {"value": "84"})
+                calculated_assessment = await TrustService(
+                    db,
+                    artifact_store=store,
+                ).assess(
+                    observation_id=calculated.id,
+                    validation_run_id=None,
+                )
+                self.assertTrue(
+                    calculated_assessment.eligible,
+                    calculated_assessment.reason_codes,
+                )
+                self.assertEqual(
+                    calculated_assessment.calculation_run_id,
+                    calculation_run.id,
+                )
+                converted, conversion_run = await VerificationService(db).convert(
+                    input_observation_id=observation_ids[0],
+                    kind=ConversionKind.UNIT,
+                    output_metric_key="sales_thousands",
+                    output_quantum="0.001",
+                    to_unit="thousand_vehicle",
+                )
+                self.assertEqual(converted.normalized_value, {"value": "0.042"})
+                converted_assessment = await TrustService(
+                    db,
+                    artifact_store=store,
+                ).assess(
+                    observation_id=converted.id,
+                    validation_run_id=None,
+                )
+                self.assertTrue(
+                    converted_assessment.eligible,
+                    converted_assessment.reason_codes,
+                )
+                self.assertEqual(
+                    converted_assessment.conversion_run_id,
+                    conversion_run.id,
+                )
+                self.assertTrue(
+                    await TrustService(db, artifact_store=store).is_assessment_current(
+                        converted_assessment
+                    )
+                )
+                revenue_validation, _ = await VerificationService(
+                    db
+                ).validate_observations(
+                    revenue_ids,
+                    absolute_tolerance=0,
+                    relative_tolerance=0,
+                )
+                fx_validation, _ = await VerificationService(db).validate_observations(
+                    fx_rate_ids,
+                    absolute_tolerance=0,
+                    relative_tolerance=0,
+                )
+                for candidate_id in revenue_ids:
+                    candidate_assessment = await TrustService(
+                        db,
+                        artifact_store=store,
+                    ).assess(
+                        observation_id=candidate_id,
+                        validation_run_id=revenue_validation.id,
+                    )
+                    self.assertTrue(
+                        candidate_assessment.eligible,
+                        candidate_assessment.reason_codes,
+                    )
+                for candidate_id in fx_rate_ids:
+                    candidate_assessment = await TrustService(
+                        db,
+                        artifact_store=store,
+                    ).assess(
+                        observation_id=candidate_id,
+                        validation_run_id=fx_validation.id,
+                    )
+                    self.assertTrue(
+                        candidate_assessment.eligible,
+                        candidate_assessment.reason_codes,
+                    )
+                converted_currency, currency_run = await VerificationService(db).convert(
+                    input_observation_id=revenue_ids[0],
+                    kind=ConversionKind.CURRENCY,
+                    output_metric_key="revenue_cny",
+                    output_quantum="0.01",
+                    to_currency="CNY",
+                    fx_rate_observation_id=fx_rate_ids[0],
+                )
+                self.assertEqual(
+                    converted_currency.normalized_value,
+                    {"value": "720"},
+                )
+                currency_assessment = await TrustService(
+                    db,
+                    artifact_store=store,
+                ).assess(
+                    observation_id=converted_currency.id,
+                    validation_run_id=None,
+                )
+                self.assertTrue(
+                    currency_assessment.eligible,
+                    currency_assessment.reason_codes,
+                )
+                self.assertEqual(
+                    currency_assessment.conversion_run_id,
+                    currency_run.id,
+                )
                 geography_replay = await TrustService(
                     db,
                     artifact_store=store,
@@ -605,7 +809,11 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         "type": "object",
                         "properties": {
                             "brand": {"type": "string"},
-                            "sales": {"type": "integer", "x-unit": "vehicle"},
+                            "sales": {
+                                "type": "integer",
+                                "x-unit": "vehicle",
+                                "x-uncertainty": {"kind": "exact"},
+                            },
                         },
                         "required": ["brand", "sales"],
                         "x-autoprism": {
@@ -826,6 +1034,20 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await db.flush()
                 db.add_all(
                     [
+                        ObservationNumericValue(
+                            observation_id=item.id,
+                            value=item.normalized_value["value"],
+                            uncertainty_kind=UncertaintyState.EXACT,
+                            absolute_error=0,
+                            uncertainty_basis={"kind": "schema_exact"},
+                            evidence_count=0,
+                        )
+                        for item in (same_source, mixed_source, originless_peer)
+                    ]
+                )
+                await db.flush()
+                db.add_all(
+                    [
                         ObservationEvidenceSet(
                             observation_id=same_source.id,
                             citation_count=1,
@@ -931,14 +1153,14 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(conflict_validation.state.value, "conflict")
                 self.assertIsNotNone(review_case)
-                calculated, calculation_run = await VerificationService(db).calculate(
-                    operation="add",
-                    input_observation_ids=[observation.id, second.id],
-                    output_metric_key="combined_sales",
-                    output_unit="vehicle",
-                )
-                self.assertEqual(calculated.normalized_value, {"value": "85"})
-                self.assertEqual(calculation_run.engine_version, "decimal-v1")
+                with self.assertRaisesRegex(ValueError, "current eligible assessment"):
+                    await VerificationService(db).calculate(
+                        operation="add",
+                        input_observation_ids=[observation.id, second.id],
+                        output_metric_key="combined_sales",
+                        output_unit="vehicle",
+                        output_quantum="1",
+                    )
                 trust_assessment = await TrustService(
                     db,
                     artifact_store=LocalArtifactStore(Path(temporary_directory)),
@@ -1014,29 +1236,7 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         params={"panel_version_key": str(panel_version.id)},
                     )
                     self.assertEqual(calculations_response.status_code, 200)
-                    self.assertEqual(
-                        calculations_response.json()[0]["replay_hash"],
-                        calculation_run.replay_hash,
-                    )
-                    calculated_response = await client.get(
-                        f"/api/v2/evidence/observations/{calculated.id}"
-                    )
-                    self.assertEqual(calculated_response.status_code, 200)
-                    calculated_payload = calculated_response.json()
-                    self.assertEqual(
-                        calculated_payload["lineage"]["origin"]["kind"],
-                        "calculation",
-                    )
-                    self.assertEqual(
-                        calculated_payload["lineage"]["origin"][
-                            "parent_observation_ids"
-                        ],
-                        [str(observation.id), str(second.id)],
-                    )
-                    self.assertEqual(
-                        len(calculated_payload["lineage"]["evidence_refs"]),
-                        2,
-                    )
+                    self.assertEqual(calculations_response.json(), [])
 
                     validations_response = await client.get(
                         "/api/v2/verification/validations",

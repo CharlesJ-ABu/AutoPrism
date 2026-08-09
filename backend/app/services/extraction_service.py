@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import simplejson as json
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -16,7 +16,9 @@ from app.domain.evidence import canonical_json, sha256_bytes, sha256_json
 from app.domain.panel_schema import (
     SchemaIssue,
     build_geographic_scope,
+    build_temporal_scope,
     geographic_source_fields,
+    numeric_uncertainty_contract,
     validate_panel_payload,
 )
 from app.models.dashboards import ExtractionRun, PanelVersion
@@ -30,8 +32,11 @@ from app.models.evidence import (
     ObservationExtractionLink,
     ObservationGeography,
     ObservationGeographyEvidence,
+    ObservationNumericEvidence,
+    ObservationNumericValue,
     SourceSnapshot,
     TrustState,
+    UncertaintyState,
 )
 
 
@@ -141,9 +146,9 @@ def build_extraction_user_prompt(
         for item in fragments
     ]
     return (
-        f"Panel contract:\n{json.dumps(panel.data_schema, ensure_ascii=False)}\n"
+        f"Panel contract:\n{json.dumps(panel.data_schema, ensure_ascii=False, use_decimal=True)}\n"
         f"Panel instructions:\n{panel.extraction_prompt}\n"
-        f"Evidence fragments:\n{json.dumps(context, ensure_ascii=False)}"
+        f"Evidence fragments:\n{json.dumps(context, ensure_ascii=False, use_decimal=True)}"
     )
 
 
@@ -232,7 +237,13 @@ class ExtractionService:
 
         issues: list[SchemaIssue] = []
         valid_records: list[
-            tuple[int, dict[str, Any], dict[str, list[str]], dict[str, Any]]
+            tuple[
+                int,
+                dict[str, Any],
+                dict[str, list[str]],
+                dict[str, Any],
+                dict[str, Any],
+            ]
         ] = []
         records = response.data.get("records")
         if not isinstance(records, list):
@@ -256,6 +267,7 @@ class ExtractionService:
                 continue
             record_issues.extend(validate_panel_payload(panel.data_schema, data))
             geographic_scope: dict[str, Any] = {}
+            temporal_scope: dict[str, Any] = {}
             if not record_issues:
                 try:
                     geographic_scope = build_geographic_scope(
@@ -267,6 +279,16 @@ class ExtractionService:
                         SchemaIssue(
                             f"$.records[{index}].data",
                             f"geographic contract failed: {exc}",
+                        )
+                    )
+            if not record_issues:
+                try:
+                    temporal_scope = build_temporal_scope(panel.data_schema, data)
+                except ValueError as exc:
+                    record_issues.append(
+                        SchemaIssue(
+                            f"$.records[{index}].data",
+                            f"time contract failed: {exc}",
                         )
                     )
             normalized_evidence: dict[str, list[str]] = {}
@@ -322,7 +344,13 @@ class ExtractionService:
             issues.extend(record_issues)
             if not record_issues:
                 valid_records.append(
-                    (index, data, normalized_evidence, geographic_scope)
+                    (
+                        index,
+                        data,
+                        normalized_evidence,
+                        geographic_scope,
+                        temporal_scope,
+                    )
                 )
 
         validation = {
@@ -379,7 +407,13 @@ class ExtractionService:
         observation_ids: list[uuid.UUID] = []
         if not issues:
             properties = panel.data_schema.get("properties", {})
-            for record_index, data, evidence, geographic_scope in valid_records:
+            for (
+                record_index,
+                data,
+                evidence,
+                geographic_scope,
+                temporal_scope,
+            ) in valid_records:
                 dimensions = {
                     key: value
                     for key, value in data.items()
@@ -391,6 +425,15 @@ class ExtractionService:
                     if definition.get("type") not in {"number", "integer"}:
                         continue
                     evidence_ids = evidence[metric_key]
+                    uncertainty_kind, absolute_error, uncertainty_basis = (
+                        numeric_uncertainty_contract(definition, data)
+                    )
+                    uncertainty_field = uncertainty_basis.get("field")
+                    uncertainty_evidence_ids = (
+                        evidence[uncertainty_field]
+                        if isinstance(uncertainty_field, str)
+                        else []
+                    )
                     fragment = fragment_by_id[evidence_ids[0]]
                     field_path = (
                         f"$.records[{record_index}].data.{metric_key}"
@@ -419,6 +462,10 @@ class ExtractionService:
                         raw_value={"value": value},
                         normalized_value={"value": value},
                         unit=definition.get("x-unit"),
+                        currency=definition.get("x-currency"),
+                        observed_at=temporal_scope.get("observed_at"),
+                        period_start=temporal_scope.get("period_start"),
+                        period_end=temporal_scope.get("period_end"),
                         dimensions=dimensions,
                         geographic_scope=geographic_scope,
                         extraction_model=response.model,
@@ -427,6 +474,32 @@ class ExtractionService:
                     )
                     self.db.add(observation)
                     await self.db.flush()
+                    self.db.add(
+                        ObservationNumericValue(
+                            observation_id=observation.id,
+                            value=value,
+                            uncertainty_kind=UncertaintyState(uncertainty_kind),
+                            absolute_error=absolute_error,
+                            uncertainty_basis=uncertainty_basis,
+                            evidence_count=len(uncertainty_evidence_ids),
+                        )
+                    )
+                    await self.db.flush()
+                    for uncertainty_ordinal, evidence_id in enumerate(
+                        uncertainty_evidence_ids
+                    ):
+                        self.db.add(
+                            ObservationNumericEvidence(
+                                observation_id=observation.id,
+                                ordinal=uncertainty_ordinal,
+                                evidence_fragment_id=fragment_by_id[evidence_id].id,
+                                claim_key=uncertainty_field,
+                                field_path=(
+                                    f"$.records[{record_index}].data."
+                                    f"{uncertainty_field}"
+                                ),
+                            )
+                        )
                     self.db.add(
                         ObservationEvidenceSet(
                             observation_id=observation.id,

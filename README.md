@@ -3,8 +3,8 @@
 AutoPrism V2 是一个 local-first、证据优先的产业研究面板平台。它把原始
 网页、PDF、CSV/Excel、RSS 与公开 API 保存为不可变历史快照，再按冻结的
 JSON Schema 形成结构化数据。核心数值可以回到原始文件、来源 URL、抓取时间
-和精确定位器。确定性代码负责计算与重放；通用单位/货币换算、舍入和误差传播
-仍属于 M7，不会在当前版本中伪装为已完成。
+和精确定位器。确定性代码负责计算与重放；M7 已加入固定单位注册表、证据链汇率
+换算、半偶舍入和保守误差区间，未知误差不会被当作零。
 
 V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终端风格，底层则替换为
 真实数据、版本化契约和可审计证据链。
@@ -27,9 +27,12 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - 确定性 JSON 映射、Schema 校验、数值核算、交叉验证和审核记录。
 - `evidence-extraction-v3` 冻结抽取输入清单、文本/清单哈希、运行输出位置，
   并通过规范化关联表保存一条观测的多声明、多证据片段及直接 ExtractionRun 血缘。
-- `numeric-v2-source-artifact-publisher` 验证规则与
-  `trust-eligibility-v3-validation-replay` 可信策略；旧规则、非确定性抽取、
+- `numeric-v3-bounded-source-artifact-publisher` 验证规则与
+  `trust-eligibility-v4-bounded-conversion-replay` 可信策略；旧规则、非确定性抽取、
   过期 peer 和不可重放来源均 fail closed。
+- `unit-registry-v1`、`decimal-v2-bounded` 与 `conversion-v1-bounded`：单位换算
+  只允许同维度同语义的固定比例；货币换算只引用数据库中当前可信且期间严格匹配
+  的直接/反向汇率观测，不联网取价、不接收用户因子、不自动选择“最近汇率”。
 - 证据审计 UI：原始来源、JSON Pointer、抓取时间、文件/文本哈希及原始文件下载。
 - V1 延续型情报驾驶舱：共享 design tokens、角色/视角切换、可信态势图、
   专业面板容器、全证据抽屉以及统一空/错/加载状态。
@@ -85,6 +88,10 @@ M6 对真实保留数据库先完成备份再升级：6 条历史观测中仅 3 
 run/output/evidence 匹配并标记为 `backfill_exact`，其余 3 条保持 unresolved；迁移没有
 猜测运行 ID、复制伪证据或改写旧观测。
 
+M7 迁移不为历史观测补数值或误差。旧行没有新的冻结数值契约时保持
+`legacy/unreplayable`；只有新抽取的 `exact`/`bounded` 观测以及完整重放的派生链才可
+进入当前可信策略。
+
 ## 测试
 
 ```bash
@@ -114,6 +121,12 @@ docker compose exec -T web alembic check
 真实备份副本升级与 `alembic check` 均通过。前端 typecheck、production build、
 依赖审计、Compose、1440×800 V1/V2 同尺寸截图、390×844 响应式、3D/2D 切换、
 证据/采集抽屉和控制台检查均通过；移动端无水平溢出，控制台无 warning/error。
+
+同日 M7 验证记录：一次性 PostgreSQL 完整后端套件 55/55 通过；迁移
+`0007_v2_numeric_conversion` 的 zero-to-head、空库 downgrade/re-upgrade、
+真实备份副本升级和 `alembic check` 通过；旧 6 条观测未被补写数值或误差。
+前端 typecheck/build 与依赖审计通过。当前浏览器换算工作台冒烟结果记录在
+[测试记录](docs/V2_TESTING.md)。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

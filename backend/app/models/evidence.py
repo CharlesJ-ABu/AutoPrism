@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
@@ -16,6 +17,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -51,6 +53,17 @@ class ReviewState(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     NEEDS_INFORMATION = "needs_information"
+
+
+class UncertaintyState(str, enum.Enum):
+    EXACT = "exact"
+    BOUNDED = "bounded"
+    UNKNOWN = "unknown"
+
+
+class ConversionKind(str, enum.Enum):
+    UNIT = "unit"
+    CURRENCY = "currency"
 
 
 class EvidenceArtifact(Base):
@@ -515,6 +528,171 @@ class CalculationRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class CalculationRunInput(Base):
+    """Ordered inputs and the exact trust decisions frozen by decimal-v2."""
+
+    __tablename__ = "calculation_run_inputs"
+
+    calculation_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("calculation_runs.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    trust_assessment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trust_assessments.id", ondelete="RESTRICT", use_alter=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_calculation_run_input_ordinal"),
+        UniqueConstraint(
+            "calculation_run_id",
+            "observation_id",
+            name="uq_calculation_run_input_observation",
+        ),
+    )
+
+
+class ObservationNumericValue(Base):
+    """Frozen machine-readable decimal and its explicitly declared uncertainty."""
+
+    __tablename__ = "observation_numeric_values"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    value: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
+    uncertainty_kind: Mapped[UncertaintyState] = mapped_column(
+        Enum(UncertaintyState, name="v2_uncertainty_state"), nullable=False
+    )
+    absolute_error: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(), nullable=True
+    )
+    uncertainty_basis: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "(uncertainty_kind = 'EXACT' AND absolute_error = 0) "
+            "OR (uncertainty_kind = 'BOUNDED' AND absolute_error >= 0) "
+            "OR (uncertainty_kind = 'UNKNOWN' AND absolute_error IS NULL)",
+            name="ck_observation_numeric_uncertainty",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(uncertainty_basis) = 'object'",
+            name="ck_observation_numeric_basis_object",
+        ),
+        CheckConstraint(
+            "(uncertainty_kind = 'BOUNDED' AND evidence_count > 0) OR "
+            "(uncertainty_kind IN ('EXACT', 'UNKNOWN') AND evidence_count = 0)",
+            name="ck_observation_numeric_evidence_count",
+        ),
+    )
+
+
+class ObservationNumericEvidence(Base):
+    """Ordered source claims proving a bounded absolute-error value."""
+
+    __tablename__ = "observation_numeric_evidence"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("observation_numeric_values.observation_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    evidence_fragment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_fragments.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    claim_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    field_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_observation_numeric_evidence_ordinal"),
+        UniqueConstraint(
+            "observation_id",
+            "evidence_fragment_id",
+            "field_path",
+            name="uq_observation_numeric_evidence_claim",
+        ),
+    )
+
+
+class ConversionRun(Base):
+    """Append-only replayable unit or currency conversion."""
+
+    __tablename__ = "conversion_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    output_observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    input_observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    input_trust_assessment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trust_assessments.id", ondelete="RESTRICT", use_alter=True),
+        nullable=False,
+    )
+    kind: Mapped[ConversionKind] = mapped_column(
+        Enum(ConversionKind, name="v2_conversion_kind"), nullable=False
+    )
+    fx_rate_observation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    fx_rate_trust_assessment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trust_assessments.id", ondelete="RESTRICT", use_alter=True),
+        nullable=True,
+    )
+    registry_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    plan: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    input_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    replay_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "replay_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_conversion_run_replay_hash_hex",
+        ),
+        CheckConstraint(
+            "(kind = 'UNIT' AND fx_rate_observation_id IS NULL "
+            "AND fx_rate_trust_assessment_id IS NULL) OR "
+            "(kind = 'CURRENCY' AND fx_rate_observation_id IS NOT NULL "
+            "AND fx_rate_trust_assessment_id IS NOT NULL)",
+            name="ck_conversion_run_kind_inputs",
+        ),
+    )
+
+
 class ValidationRun(Base):
     """Cross-source validation result for one comparable metric group."""
 
@@ -635,6 +813,11 @@ class TrustAssessment(Base):
         ForeignKey("calculation_runs.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    conversion_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversion_runs.id", ondelete="RESTRICT", use_alter=True),
+        nullable=True,
+    )
     review_decision_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("review_decisions.id", ondelete="RESTRICT"),
@@ -727,6 +910,10 @@ for _immutable_model in (
     ExtractionRunInput,
     ObservationRevision,
     CalculationRun,
+    CalculationRunInput,
+    ObservationNumericValue,
+    ObservationNumericEvidence,
+    ConversionRun,
     ValidationRun,
     ReviewCase,
     ReviewDecision,

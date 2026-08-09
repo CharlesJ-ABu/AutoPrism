@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -9,27 +10,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.evidence import (
     CalculationOperation,
-    execute_normalized_calculation,
     normalize_calculation_contract,
     sha256_json,
     validate_numeric_sources,
 )
+from app.domain.numeric import (
+    CONVERSION_ENGINE_VERSION,
+    NUMERIC_ENGINE_VERSION,
+    UNIT_REGISTRY_VERSION,
+    UncertaintyKind,
+    canonical_decimal,
+    calculate_interval,
+    convert_currency,
+    convert_unit,
+    decimal_context,
+    decimal_value,
+    make_interval,
+)
+from app.models.dashboards import PanelVersion
 from app.models.evidence import (
     CalculationRun,
+    CalculationRunInput,
+    ConversionKind,
+    ConversionRun,
     EvidenceArtifact,
     EvidenceFragment,
     MetricObservation,
     ObservationEvidenceLink,
     ObservationEvidenceSet,
+    ObservationNumericEvidence,
+    ObservationNumericValue,
     ReviewCase,
     SourceSnapshot,
     TrustState,
+    TrustAssessment,
+    UncertaintyState,
     ValidationRun,
     VerificationState,
 )
 
 
-VALIDATION_RULE_VERSION = "numeric-v2-source-artifact-publisher"
+VALIDATION_RULE_VERSION = "numeric-v3-bounded-source-artifact-publisher"
 
 
 def observation_numeric_values(
@@ -96,6 +117,7 @@ def ensure_comparable_observations(
 
 def evaluate_validation_rule(
     observations: list[MetricObservation],
+    numeric_values: list[ObservationNumericValue],
     *,
     absolute_tolerance: Any,
     relative_tolerance: Any,
@@ -108,6 +130,27 @@ def evaluate_validation_rule(
         absolute_tolerance=absolute_tolerance,
         relative_tolerance=relative_tolerance,
     )
+    if len(numeric_values) != len(observations):
+        raise ValueError("every validation input requires frozen numeric uncertainty")
+    intervals = [
+        make_interval(
+            item.value,
+            uncertainty_kind=UncertaintyKind(item.uncertainty_kind.value),
+            absolute_error=item.absolute_error,
+        )
+        for item in numeric_values
+    ]
+    absolute = decimal_value(absolute_tolerance)
+    relative = decimal_value(relative_tolerance)
+    if absolute < 0 or relative < 0:
+        raise ValueError("validation tolerances must not be negative")
+    with decimal_context():
+        interval_gap = max(
+            Decimal("0"),
+            max(item.low for item in intervals) - min(item.high for item in intervals),
+        )
+        scale = max((abs(item.value) for item in intervals), default=Decimal("0"))
+        effective_tolerance = max(absolute, scale * relative)
     provenance_issues = provenance["provenance_issues"]
     independent_source_count = provenance["independent_source_count"]
     independent_artifact_count = provenance["independent_artifact_count"]
@@ -119,11 +162,13 @@ def evaluate_validation_rule(
     ) < 2:
         state = VerificationState.NEEDS_REVIEW
     else:
-        state = {
-            "passed": VerificationState.PASSED,
-            "conflict": VerificationState.CONFLICT,
-            "needs_review": VerificationState.NEEDS_REVIEW,
-        }[numeric_result.state]
+        state = (
+            VerificationState.PASSED
+            if len(intervals) >= 2 and interval_gap <= effective_tolerance
+            else VerificationState.CONFLICT
+            if len(intervals) >= 2
+            else VerificationState.NEEDS_REVIEW
+        )
     result = {
         "minimum": (
             str(numeric_result.minimum)
@@ -161,6 +206,19 @@ def evaluate_validation_rule(
             "observation_publisher_identities"
         ],
         "provenance_issues": provenance_issues,
+        "interval_gap": canonical_decimal(interval_gap),
+        "effective_tolerance": canonical_decimal(effective_tolerance),
+        "uncertainty_engine_version": "bounded-validation-v1",
+        "input_intervals": [
+            {
+                "observation_id": str(observation.id),
+                "value": canonical_decimal(interval.value),
+                "absolute_error": canonical_decimal(interval.absolute_error),
+                "low": canonical_decimal(interval.low),
+                "high": canonical_decimal(interval.high),
+            }
+            for observation, interval in zip(observations, intervals, strict=True)
+        ],
     }
     return state, result
 
@@ -206,6 +264,20 @@ class VerificationService:
         if any(item is None for item in observations):
             raise LookupError("one or more observations do not exist")
         return observations
+
+    async def _load_numeric_values(
+        self,
+        observations: list[MetricObservation],
+    ) -> list[ObservationNumericValue]:
+        rows = [
+            await self.db.get(ObservationNumericValue, item.id)
+            for item in observations
+        ]
+        if any(item is None for item in rows):
+            raise ValueError(
+                "every observation requires a frozen numeric uncertainty record"
+            )
+        return rows
 
     async def resolve_validation_provenance(
         self,
@@ -420,6 +492,7 @@ class VerificationService:
         except (TypeError, ValueError, AttributeError) as exc:
             raise ValueError("validation contains an invalid observation id") from exc
         observations = await self._load_observations(observation_ids)
+        numeric_values = await self._load_numeric_values(observations)
         ensure_comparable_observations(observations)
         if not isinstance(validation.tolerance, dict) or set(
             validation.tolerance
@@ -428,6 +501,7 @@ class VerificationService:
         provenance = await self.resolve_validation_provenance(observations)
         expected_state, expected_result = evaluate_validation_rule(
             observations,
+            numeric_values,
             absolute_tolerance=validation.tolerance["absolute"],
             relative_tolerance=validation.tolerance["relative"],
             provenance=provenance,
@@ -448,11 +522,13 @@ class VerificationService:
         relative_tolerance: Any,
     ) -> tuple[ValidationRun, ReviewCase | None]:
         observations = await self._load_observations(observation_ids)
+        numeric_values = await self._load_numeric_values(observations)
         first = observations[0]
         ensure_comparable_observations(observations)
         provenance = await self.resolve_validation_provenance(observations)
         state, result = evaluate_validation_rule(
             observations,
+            numeric_values,
             absolute_tolerance=absolute_tolerance,
             relative_tolerance=relative_tolerance,
             provenance=provenance,
@@ -489,6 +565,307 @@ class VerificationService:
         await self.db.commit()
         return run, review
 
+    async def _current_eligible_assessment(
+        self,
+        observation_id: uuid.UUID,
+    ) -> TrustAssessment:
+        assessment = (
+            await self.db.execute(
+                select(TrustAssessment)
+                .where(TrustAssessment.observation_id == observation_id)
+                .order_by(TrustAssessment.created_at.desc(), TrustAssessment.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if assessment is None or not assessment.eligible:
+            raise ValueError("conversion inputs require a current eligible assessment")
+        # Import lazily because TrustService reuses this service for validation
+        # replay. This is an execution dependency, not a module-level cycle.
+        from app.services.trust_service import TrustService
+
+        if not await TrustService(self.db).is_assessment_current(assessment):
+            raise ValueError("conversion input assessment is no longer current")
+        return assessment
+
+    async def _numeric_interval(
+        self,
+        observation: MetricObservation,
+    ):
+        numeric = await self.db.get(ObservationNumericValue, observation.id)
+        if numeric is None:
+            raise ValueError("observation has no frozen numeric uncertainty record")
+        return numeric, make_interval(
+            numeric.value,
+            uncertainty_kind=UncertaintyKind(numeric.uncertainty_kind.value),
+            absolute_error=numeric.absolute_error,
+        )
+
+    async def convert(
+        self,
+        *,
+        input_observation_id: uuid.UUID,
+        kind: ConversionKind | str,
+        output_metric_key: str,
+        output_quantum: Any,
+        to_unit: str | None = None,
+        to_currency: str | None = None,
+        fx_rate_observation_id: uuid.UUID | None = None,
+    ) -> tuple[MetricObservation, ConversionRun]:
+        conversion_kind = ConversionKind(kind)
+        observation = await self.db.get(MetricObservation, input_observation_id)
+        if observation is None:
+            raise LookupError("input observation does not exist")
+        input_assessment = await self._current_eligible_assessment(observation.id)
+        input_numeric, input_interval = await self._numeric_interval(observation)
+
+        fx_observation = None
+        fx_assessment = None
+        fx_numeric = None
+        if conversion_kind is ConversionKind.UNIT:
+            if not to_unit or to_currency is not None or fx_rate_observation_id is not None:
+                raise ValueError("unit conversion requires only to_unit")
+            if not observation.unit:
+                raise ValueError("input observation has no unit")
+            result, plan = convert_unit(
+                input_interval,
+                from_unit=observation.unit,
+                to_unit=to_unit,
+                output_quantum=output_quantum,
+            )
+            output_unit = to_unit
+            output_currency = observation.currency
+        else:
+            if not to_currency or to_unit is not None or fx_rate_observation_id is None:
+                raise ValueError(
+                    "currency conversion requires to_currency and fx_rate_observation_id"
+                )
+            if not observation.currency:
+                raise ValueError("input observation has no currency")
+            fx_observation = await self.db.get(
+                MetricObservation, fx_rate_observation_id
+            )
+            if fx_observation is None:
+                raise LookupError("FX rate observation does not exist")
+            fx_assessment = await self._current_eligible_assessment(fx_observation.id)
+            fx_numeric, fx_interval = await self._numeric_interval(fx_observation)
+            if fx_observation.unit != "currency_ratio":
+                raise ValueError("FX rate observation must use currency_ratio")
+            if not isinstance(fx_observation.dimensions, dict):
+                raise ValueError("FX rate observation dimensions are invalid")
+            base_currency = fx_observation.dimensions.get("base_currency")
+            quote_currency = fx_observation.dimensions.get("quote_currency")
+            rate_basis = fx_observation.dimensions.get("rate_basis")
+            if rate_basis not in {"instant", "period_end", "period_average"}:
+                raise ValueError("FX rate requires an explicit supported time basis")
+            if rate_basis == "instant" and (
+                observation.observed_at is None
+                or observation.observed_at != fx_observation.observed_at
+            ):
+                raise ValueError("instant FX rate timestamp must exactly match the input")
+            if rate_basis == "period_end" and (
+                observation.period_end is None
+                or observation.period_end != fx_observation.period_end
+            ):
+                raise ValueError("period-end FX date must exactly match the input")
+            if rate_basis == "period_average" and (
+                observation.period_start is None
+                or observation.period_start != fx_observation.period_start
+                or observation.period_end != fx_observation.period_end
+            ):
+                raise ValueError("period-average FX range must exactly match the input")
+            result, plan = convert_currency(
+                input_interval,
+                fx_interval,
+                from_currency=observation.currency,
+                to_currency=to_currency,
+                rate_base_currency=base_currency,
+                rate_quote_currency=quote_currency,
+                output_quantum=output_quantum,
+            )
+            plan["rate_basis"] = rate_basis
+            output_unit = observation.unit
+            output_currency = to_currency
+
+        try:
+            panel_id = uuid.UUID(observation.panel_version_key)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("input observation panel lineage is invalid") from exc
+        panel = await self.db.get(PanelVersion, panel_id)
+        properties = (
+            panel.data_schema.get("properties")
+            if panel is not None and isinstance(panel.data_schema, dict)
+            else None
+        )
+        output_definition = (
+            properties.get(output_metric_key) if isinstance(properties, dict) else None
+        )
+        if (
+            not isinstance(output_definition, dict)
+            or output_definition.get("type") not in {"number", "integer"}
+        ):
+            raise ValueError("output_metric_key must be a numeric field in the frozen panel")
+        expected_unit = output_definition.get("x-unit")
+        if expected_unit != output_unit:
+            raise ValueError("output unit does not match the frozen panel schema")
+        if output_definition.get("x-currency") != output_currency:
+            raise ValueError("output currency does not match the frozen panel schema")
+
+        links_by_observation = await self._evidence_links(
+            [item for item in (observation, fx_observation) if item is not None]
+        )
+        evidence_inputs: list[tuple[uuid.UUID, uuid.UUID]] = []
+        seen: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for item in (observation, fx_observation):
+            if item is None:
+                continue
+            for link in links_by_observation.get(item.id, []):
+                entry = (link.evidence_fragment_id, item.id)
+                if entry not in seen:
+                    seen.add(entry)
+                    evidence_inputs.append(entry)
+        if not evidence_inputs:
+            raise ValueError("conversion inputs have no frozen evidence")
+
+        output = MetricObservation(
+            panel_version_key=observation.panel_version_key,
+            schema_version=observation.schema_version,
+            metric_key=output_metric_key,
+            evidence_fragment_id=evidence_inputs[0][0],
+            raw_value={
+                "origin": "deterministic_conversion",
+                "input_observation_id": str(observation.id),
+                "fx_rate_observation_id": (
+                    str(fx_observation.id) if fx_observation else None
+                ),
+            },
+            normalized_value={"value": canonical_decimal(result.value)},
+            unit=output_unit,
+            currency=output_currency,
+            observed_at=observation.observed_at,
+            period_start=observation.period_start,
+            period_end=observation.period_end,
+            dimensions=observation.dimensions,
+            # geo-scope-v1 currently proves only direct extraction fields.
+            # A conversion must not copy that authority without a dedicated
+            # derived-geography contract.
+            geographic_scope={},
+            trust_state=TrustState.UNVERIFIED,
+        )
+        self.db.add(output)
+        await self.db.flush()
+        self.db.add(
+            ObservationEvidenceSet(
+                observation_id=output.id,
+                citation_count=len(evidence_inputs),
+            )
+        )
+        output_error = result.absolute_error
+        output_kind = (
+            UncertaintyState.EXACT if output_error == 0 else UncertaintyState.BOUNDED
+        )
+        self.db.add(
+            ObservationNumericValue(
+                observation_id=output.id,
+                value=result.value,
+                uncertainty_kind=output_kind,
+                absolute_error=output_error,
+                uncertainty_basis={
+                    "kind": "derived_interval",
+                    "engine_version": CONVERSION_ENGINE_VERSION,
+                },
+                evidence_count=len(evidence_inputs) if output_error != 0 else 0,
+            )
+        )
+        await self.db.flush()
+        for ordinal, (fragment_id, source_observation_id) in enumerate(evidence_inputs):
+            self.db.add(
+                ObservationEvidenceLink(
+                    observation_id=output.id,
+                    ordinal=ordinal,
+                    evidence_fragment_id=fragment_id,
+                    role="primary" if ordinal == 0 else "calculation_input",
+                    claim_key=output_metric_key,
+                    field_path=f"input_observation:{source_observation_id}",
+                )
+            )
+            if output_error != 0:
+                self.db.add(
+                    ObservationNumericEvidence(
+                        observation_id=output.id,
+                        ordinal=ordinal,
+                        evidence_fragment_id=fragment_id,
+                        claim_key=output_metric_key,
+                        field_path=f"input_observation:{source_observation_id}",
+                    )
+                )
+
+        input_snapshot = {
+            "input": {
+                "observation_id": str(observation.id),
+                "assessment_id": str(input_assessment.id),
+                "value": canonical_decimal(input_numeric.value),
+                "absolute_error": (
+                    canonical_decimal(input_numeric.absolute_error)
+                    if input_numeric.absolute_error is not None
+                    else None
+                ),
+                "uncertainty_kind": input_numeric.uncertainty_kind.value,
+                "unit": observation.unit,
+                "currency": observation.currency,
+            },
+            "fx_rate": (
+                {
+                    "observation_id": str(fx_observation.id),
+                    "assessment_id": str(fx_assessment.id),
+                    "value": canonical_decimal(fx_numeric.value),
+                    "absolute_error": (
+                        canonical_decimal(fx_numeric.absolute_error)
+                        if fx_numeric.absolute_error is not None
+                        else None
+                    ),
+                    "uncertainty_kind": fx_numeric.uncertainty_kind.value,
+                    "unit": fx_observation.unit,
+                    "dimensions": fx_observation.dimensions,
+                }
+                if fx_observation and fx_assessment and fx_numeric
+                else None
+            ),
+        }
+        frozen_result = {
+            "value": canonical_decimal(result.value),
+            "absolute_error": canonical_decimal(result.absolute_error),
+            "low": canonical_decimal(result.low),
+            "high": canonical_decimal(result.high),
+            "quantum": canonical_decimal(result.quantum),
+            "unit": output_unit,
+            "currency": output_currency,
+        }
+        replay_payload = {
+            "kind": conversion_kind.value,
+            "registry_version": UNIT_REGISTRY_VERSION,
+            "engine_version": CONVERSION_ENGINE_VERSION,
+            "plan": plan,
+            "input_snapshot": input_snapshot,
+            "result": frozen_result,
+        }
+        run = ConversionRun(
+            output_observation_id=output.id,
+            input_observation_id=observation.id,
+            input_trust_assessment_id=input_assessment.id,
+            kind=conversion_kind,
+            fx_rate_observation_id=(fx_observation.id if fx_observation else None),
+            fx_rate_trust_assessment_id=(fx_assessment.id if fx_assessment else None),
+            registry_version=UNIT_REGISTRY_VERSION,
+            engine_version=CONVERSION_ENGINE_VERSION,
+            plan=plan,
+            input_snapshot=input_snapshot,
+            result=frozen_result,
+            replay_hash=sha256_json(replay_payload),
+        )
+        self.db.add(run)
+        await self.db.commit()
+        return output, run
+
     async def calculate(
         self,
         *,
@@ -496,6 +873,7 @@ class VerificationService:
         input_observation_ids: list[uuid.UUID],
         output_metric_key: str,
         output_unit: str | None,
+        output_quantum: Any,
         parameters: dict[str, Any] | None = None,
     ) -> tuple[MetricObservation, CalculationRun]:
         observations = await self._load_observations(input_observation_ids)
@@ -506,6 +884,13 @@ class VerificationService:
         )
         normalized_operation = contract.operation
         normalized_parameters = contract.parameters
+        if normalized_operation in {
+            CalculationOperation.MULTIPLY,
+            CalculationOperation.DIVIDE,
+        }:
+            raise ValueError(
+                "bounded multiply/divide requires a future dimensional algebra contract"
+            )
         first = observations[0]
         if any(
             item.panel_version_key != first.panel_version_key
@@ -543,15 +928,49 @@ class VerificationService:
             and output_unit != "percent"
         ):
             raise ValueError("percent_change output_unit must be percent")
-        if normalized_operation in {
-            CalculationOperation.MULTIPLY,
-            CalculationOperation.DIVIDE,
-        }:
-            if not output_unit:
-                raise ValueError(
-                    f"{normalized_operation.value} requires an explicit output_unit"
-                )
-        result = execute_normalized_calculation(contract)
+        output_currency = (
+            None
+            if normalized_operation is CalculationOperation.PERCENT_CHANGE
+            else first.currency
+        )
+        assessments = [
+            await self._current_eligible_assessment(item.id) for item in observations
+        ]
+        numeric_values = await self._load_numeric_values(observations)
+        intervals = [
+            make_interval(
+                item.value,
+                uncertainty_kind=UncertaintyKind(item.uncertainty_kind.value),
+                absolute_error=item.absolute_error,
+            )
+            for item in numeric_values
+        ]
+        result, calculation_plan = calculate_interval(
+            normalized_operation,
+            intervals,
+            parameters=normalized_parameters,
+            output_quantum=output_quantum,
+        )
+        try:
+            panel_id = uuid.UUID(first.panel_version_key)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("calculation panel lineage is invalid") from exc
+        panel = await self.db.get(PanelVersion, panel_id)
+        properties = (
+            panel.data_schema.get("properties")
+            if panel is not None and isinstance(panel.data_schema, dict)
+            else None
+        )
+        output_definition = (
+            properties.get(output_metric_key) if isinstance(properties, dict) else None
+        )
+        if (
+            not isinstance(output_definition, dict)
+            or output_definition.get("type") not in {"number", "integer"}
+            or output_definition.get("x-unit") != output_unit
+            or output_definition.get("x-currency") != output_currency
+        ):
+            raise ValueError("calculation output must match a frozen numeric schema field")
         links_by_observation = await self._evidence_links(observations)
         evidence_inputs: list[tuple[uuid.UUID, uuid.UUID]] = []
         seen_evidence_inputs: set[tuple[uuid.UUID, uuid.UUID]] = set()
@@ -581,14 +1000,14 @@ class VerificationService:
                     str(item.id) for item in observations
                 ],
             },
-            normalized_value={"value": str(result.value)},
+            normalized_value={"value": canonical_decimal(result.value)},
             unit=output_unit,
-            currency=first.currency,
+            currency=output_currency,
             observed_at=first.observed_at,
             period_start=first.period_start,
             period_end=first.period_end,
             dimensions=first.dimensions,
-            geographic_scope=first.geographic_scope,
+            geographic_scope={},
             trust_state=TrustState.UNVERIFIED,
         )
         self.db.add(output)
@@ -597,6 +1016,25 @@ class VerificationService:
             ObservationEvidenceSet(
                 observation_id=output.id,
                 citation_count=len(evidence_inputs),
+            )
+        )
+        await self.db.flush()
+        output_error = result.absolute_error
+        self.db.add(
+            ObservationNumericValue(
+                observation_id=output.id,
+                value=result.value,
+                uncertainty_kind=(
+                    UncertaintyState.EXACT
+                    if output_error == 0
+                    else UncertaintyState.BOUNDED
+                ),
+                absolute_error=output_error,
+                uncertainty_basis={
+                    "kind": "derived_interval",
+                    "engine_version": NUMERIC_ENGINE_VERSION,
+                },
+                evidence_count=len(evidence_inputs) if output_error != 0 else 0,
             )
         )
         await self.db.flush()
@@ -613,23 +1051,76 @@ class VerificationService:
                     field_path=f"input_observation:{input_observation_id}",
                 )
             )
+            if output_error != 0:
+                self.db.add(
+                    ObservationNumericEvidence(
+                        observation_id=output.id,
+                        ordinal=ordinal,
+                        evidence_fragment_id=fragment_id,
+                        claim_key=output_metric_key,
+                        field_path=f"input_observation:{input_observation_id}",
+                    )
+                )
+        frozen_inputs = [
+            {
+                "observation_id": str(observation.id),
+                "assessment_id": str(assessment.id),
+                "value": canonical_decimal(numeric.value),
+                "absolute_error": (
+                    canonical_decimal(numeric.absolute_error)
+                    if numeric.absolute_error is not None
+                    else None
+                ),
+                "uncertainty_kind": numeric.uncertainty_kind.value,
+                "unit": observation.unit,
+                "currency": observation.currency,
+            }
+            for observation, assessment, numeric in zip(
+                observations, assessments, numeric_values, strict=True
+            )
+        ]
+        frozen_result = {
+            "value": canonical_decimal(result.value),
+            "absolute_error": canonical_decimal(result.absolute_error),
+            "low": canonical_decimal(result.low),
+            "high": canonical_decimal(result.high),
+            "quantum": canonical_decimal(result.quantum),
+            "unit": output_unit,
+            "currency": output_currency,
+        }
+        stored_parameters = {
+            "operation_parameters": calculation_plan["parameters"],
+            "output_quantum": canonical_decimal(result.quantum),
+        }
         replay_payload = {
             "operation": normalized_operation.value,
             "input_observation_ids": [str(item.id) for item in observations],
-            "input_values": [item.normalized_value for item in observations],
-            "parameters": normalized_parameters,
-            "result": str(result.value),
-            "engine_version": "decimal-v1",
+            "inputs": frozen_inputs,
+            "parameters": stored_parameters,
+            "result": frozen_result,
+            "engine_version": NUMERIC_ENGINE_VERSION,
         }
         calculation = CalculationRun(
             output_observation_id=output.id,
             operation=normalized_operation.value,
             input_observation_ids=[str(item.id) for item in observations],
-            parameters=normalized_parameters,
-            result={"value": str(result.value), "unit": output_unit},
-            engine_version="decimal-v1",
+            parameters=stored_parameters,
+            result=frozen_result,
+            engine_version=NUMERIC_ENGINE_VERSION,
             replay_hash=sha256_json(replay_payload),
         )
         self.db.add(calculation)
+        await self.db.flush()
+        for ordinal, (observation, assessment) in enumerate(
+            zip(observations, assessments, strict=True)
+        ):
+            self.db.add(
+                CalculationRunInput(
+                    calculation_run_id=calculation.id,
+                    ordinal=ordinal,
+                    observation_id=observation.id,
+                    trust_assessment_id=assessment.id,
+                )
+            )
         await self.db.commit()
         return output, calculation

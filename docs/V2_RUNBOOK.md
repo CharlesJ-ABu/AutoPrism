@@ -42,19 +42,19 @@ container is allowed to start.
 Use an explicit disposable database for migration and full integration tests:
 
 ```bash
-docker compose exec -T postgres createdb -U postgres autoprism_v2_m6_gate
+docker compose exec -T postgres createdb -U postgres autoprism_v2_m7_gate
 docker compose run --rm \
-  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_m6_gate \
-  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_m6_gate \
+  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_m7_gate \
+  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_m7_gate \
   web alembic upgrade head
 docker compose run --rm \
   -e AUTOPRISM_RUN_DB_TESTS=1 \
-  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_m6_gate \
-  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_m6_gate \
+  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_m7_gate \
+  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_m7_gate \
   web python -m unittest discover -s tests -v
 docker compose run --rm \
-  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_m6_gate \
-  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_m6_gate \
+  -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism_v2_m7_gate \
+  -e DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism_v2_m7_gate \
   web alembic check
 ```
 
@@ -91,6 +91,12 @@ Migration `0006_v2_trusted_insight_map` also rejects downgrade when frozen
 geography exists. Before upgrading a populated `0005` database, verify
 `geographic_scope` is empty or stop for reviewed migration; `0006` deliberately
 refuses to infer evidence for historical non-empty scopes.
+
+Migration `0007_v2_numeric_conversion` never backfills numeric values or error
+bounds for legacy observations. On a populated upgrade, reconcile the original
+observation count/digest and verify the new numeric/calculation-input/conversion
+tables remain empty unless those rows were created through the new contract.
+Downgrade is allowed only on a disposable database with no M7 history.
 
 ### M6 lineage audit
 

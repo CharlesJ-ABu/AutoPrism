@@ -1,5 +1,6 @@
 import json
 import unittest
+from decimal import Decimal
 
 import httpx
 
@@ -13,6 +14,26 @@ from app.ai.providers import (
 
 
 class ModelProviderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_deterministic_mapping_preserves_source_decimal_precision(self):
+        provider = DeterministicMappingProvider(
+            {
+                "extraction_engine": "json_mapping_v1",
+                "field_mappings": {"value": "value"},
+            }
+        )
+        response = await provider.generate(
+            system_prompt="extract",
+            user_prompt=(
+                'Evidence fragments:\n[{"evidence_fragment_id":"fragment-1",'
+                '"text":"{\\"value\\":0.12345678901234567890123456789}"}]'
+            ),
+            output_schema={},
+        )
+        self.assertEqual(
+            response.data["records"][0]["data"]["value"],
+            Decimal("0.12345678901234567890123456789"),
+        )
+
     async def test_deterministic_mapping_provider_cites_source_fragment(self):
         provider = DeterministicMappingProvider(
             {

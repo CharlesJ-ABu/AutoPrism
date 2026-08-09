@@ -2,11 +2,14 @@
 
 This contract defines when AutoPrism may display, calculate, validate or use a
 value in an L2 insight. It is deliberately stricter than successful collection
-or JSON Schema validation. M6 policy versions frozen on 2026-08-09 are:
+or JSON Schema validation. Current policy versions are:
 
 - extraction contract: `evidence-extraction-v3`;
-- validation rule: `numeric-v2-source-artifact-publisher`;
-- trust policy: `trust-eligibility-v3-validation-replay`.
+- validation rule: `numeric-v3-bounded-source-artifact-publisher`;
+- trust policy: `trust-eligibility-v4-bounded-conversion-replay`;
+- unit registry: `unit-registry-v1`;
+- numeric engine: `decimal-v2-bounded`;
+- conversion engine: `conversion-v1-bounded`.
 
 Older policy labels remain immutable history but are not accepted as current
 eligibility proof.
@@ -26,8 +29,9 @@ These states are independent and must never be collapsed into one badge:
 2. `evidence_cited`: each extracted field cites an exact fragment in the input
    snapshot.
 3. `calculation_replayable`: deterministic code can reproduce a calculation
-   from immutable observation IDs and the frozen plan. This is not the same as
-   `trusted_eligible`; the M6 trusted-calculation engine allowlist is empty.
+   from immutable observation IDs, bounded numeric records, current input
+   assessments and the frozen plan. Replayability alone is still not the same
+   as `trusted_eligible`.
 4. `cross_source_validated`: comparable observations from at least two
    independent source definitions, artifacts and frozen publisher identities
    satisfy explicit tolerances.
@@ -113,7 +117,22 @@ replay from the exact direct extraction record, required Schema fields,
 citations and frozen input manifest. A descriptive geography label, source URL
 hostname or evidence locator alone is not a coordinate authority.
 
-## Deterministic calculations
+## Frozen numeric and uncertainty contract
+
+Every new numeric observation has exactly one immutable numeric record with a
+canonical Decimal value and one of `exact`, `bounded` or `unknown`. Exact means
+zero error by contract; bounded requires a non-negative absolute error and its
+claim evidence; unknown never becomes zero and cannot enter validation,
+conversion, calculation or trust eligibility. Migration `0007` deliberately
+does not infer these records for historical observations.
+
+All arithmetic uses a local 50-digit Decimal context with ROUND_HALF_EVEN and
+explicit positive output quantum. JSON source parsing, PostgreSQL JSON
+serialization and hashes preserve Decimal values rather than routing them
+through binary floats. Inputs and hashes use canonical decimal strings;
+booleans, null, NaN, Infinity and malformed historic JSON fail closed.
+
+## Deterministic calculations and conversions
 
 The implemented calculation engine is versioned Decimal code. Inputs are database
 observation IDs; callers cannot submit fact values. Runs freeze operation,
@@ -122,22 +141,36 @@ ordered inputs, parameters, output, engine version and replay hash.
 - duplicate or differently scoped inputs are rejected;
 - add/subtract/weighted-average require identical input/output units;
 - percent change requires the explicit `percent` output unit;
-- multiply/divide require an explicit output unit and unit plan;
+- multiply/divide are rejected until a versioned dimensional-algebra contract exists;
 - currency, period, geography, dimensions, panel and Schema scope must match;
 - output remains UNVERIFIED and identifies itself as a deterministic
   calculation.
 
-M6 stores and replays these runs but deliberately has no trusted calculation
-engine version. General unit conversion, currency conversion, deterministic
-rounding/error propagation and a standalone replay-verification endpoint are
-M7 work and must not be presented as complete or eligible before those
-contracts exist.
+`decimal-v2-bounded` may become eligible only when normalized input rows freeze
+each current eligible assessment and Trust independently replays the operation,
+interval bounds, quantum, output Schema, evidence union and replay hash. Older
+engines remain immutable but ineligible.
+
+Unit conversion is restricted to codes in `unit-registry-v1` with identical
+dimension and semantic kind. Currency conversion accepts no numeric rate from
+the caller: it references an existing current eligible `currency_ratio`
+observation with explicit base/quote and `instant`, `period_end` or
+`period_average` basis. Time scope must match exactly. Direct and inverse pairs
+are supported; live lookup, nearest-rate selection and triangular FX are not.
+Every conversion freezes input assessment IDs, plan, input snapshot, result,
+engine/registry versions and replay hash, and is dynamically invalidated when
+an input assessment ceases to be current.
+
+Executable time authority uses `time-scope-v1`. Its required Schema fields are
+ISO-8601 strings with explicit UTC offsets; extraction freezes the resulting
+instant or period on every observation and Trust rebuilds it from the cited
+output. Retrieval time and “nearest available” time are never substituted.
 
 ## Cross-source validation
 
 Tolerances are mandatory request fields. Validation rejects duplicate IDs and
 non-comparable panel, Schema, metric, unit, currency, period, geography or
-dimension scopes. Under `numeric-v2-source-artifact-publisher`, a run can pass
+dimension scopes. Under `numeric-v3-bounded-source-artifact-publisher`, a run can pass
 only when at least two independent `SourceDefinition` IDs, artifact SHA-256
 identities and snapshot-frozen publisher identities are present. Repeated
 sources, repeated artifacts, repeated publishers or missing publisher identity
@@ -148,7 +181,7 @@ minimum/maximum/spread, rule version and result. Conflict or insufficient
 independence creates an immutable review case.
 
 A passed validation does not mutate an observation to VERIFIED. The
-`trust-eligibility-v3-validation-replay` assessment separately recomputes the
+`trust-eligibility-v4-bounded-conversion-replay` assessment separately recomputes the
 comparison key, expected result/state and current rule. It also requires every
 validation peer to remain a current head and pass artifact bytes, fragment
 hash, parser locator, snapshot state, frozen evidence-set and unambiguous-origin
@@ -158,16 +191,16 @@ for `trusted_only` reads and new L2 creation.
 ## Trust eligibility
 
 `TrustAssessment` is immutable historical evidence, not a mutable status flag.
-Current eligibility is recalculated dynamically from its observation,
-validation run and all peers. An assessment is current only under the exact M6
-policy version, for a non-superseded observation included in the frozen
-validation, with a PASSED replay and complete independent provenance.
+Current eligibility is recalculated dynamically from its observation and
+origin. Direct observations require a current PASSED validation and every peer;
+derived observations instead require a supported calculation/conversion run
+whose frozen input assessments all remain current.
 
 Direct extraction eligibility additionally requires exact deterministic
 `evidence-extraction-v3` replay, panel/Schema/unit/claim agreement and a valid
 frozen input manifest. Historical v2 extraction contracts, legacy rows,
 unsupported validation rules, non-deterministic extraction, manual revision
-attestation and calculation engines outside the empty M6 allowlist fail closed
+attestation and calculation/conversion engines outside the current allowlists fail closed
 with explicit reason codes. A human decision is never silently treated as a
 substitute for these proofs.
 

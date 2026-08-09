@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 from dataclasses import dataclass
 from decimal import Decimal, DecimalException, InvalidOperation
 from enum import Enum
 from typing import Any, Mapping
+
+import simplejson as json
 
 
 class LocatorType(str, Enum):
@@ -62,6 +63,7 @@ def canonical_json(value: Any) -> str:
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
+        use_decimal=True,
     )
 
 
@@ -115,9 +117,11 @@ def _decimal(value: Any) -> Decimal:
 
 
 def _is_finite_json_number(value: Any) -> bool:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         return False
-    return not isinstance(value, float) or math.isfinite(value)
+    return value.is_finite() if isinstance(value, Decimal) else (
+        not isinstance(value, float) or math.isfinite(value)
+    )
 
 
 def normalize_calculation_contract(

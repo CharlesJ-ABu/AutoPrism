@@ -1,8 +1,13 @@
 import unittest
+from copy import deepcopy
+from datetime import datetime
+from decimal import Decimal
 
 from app.domain.panel_schema import (
+    build_temporal_scope,
     build_geographic_scope,
     geographic_source_fields,
+    numeric_uncertainty_contract,
     validate_panel_payload,
     validate_panel_schema,
     validate_ui_dsl,
@@ -32,10 +37,60 @@ VALID_SCHEMA = {
 
 
 class PanelSchemaTests(unittest.TestCase):
+    def test_evidence_bound_time_scope_requires_explicit_utc_field(self):
+        schema = deepcopy(VALID_SCHEMA)
+        schema["properties"]["reported_at"] = {"type": "string"}
+        schema["required"].append("reported_at")
+        schema["x-autoprism"]["time_dimension"] = {
+            "contract_version": "time-scope-v1",
+            "kind": "instant",
+            "field": "reported_at",
+        }
+        self.assertFalse(validate_panel_schema(schema))
+        scope = build_temporal_scope(
+            schema,
+            {"reported_at": "2026-08-10T08:00:00+08:00"},
+        )
+        self.assertEqual(scope["observed_at"], datetime(2026, 8, 10, 0, 0))
+        with self.assertRaisesRegex(ValueError, "UTC offset"):
+            build_temporal_scope(schema, {"reported_at": "2026-08-10T00:00:00"})
+
     def test_contract_requires_semantics_beyond_json_types(self):
         self.assertEqual(validate_panel_schema(VALID_SCHEMA), ())
         broken = {**VALID_SCHEMA, "x-autoprism": {}}
         self.assertGreaterEqual(len(validate_panel_schema(broken)), 4)
+
+    def test_uncertainty_contract_never_invents_an_error_field(self):
+        broken = {
+            **VALID_SCHEMA,
+            "properties": {
+                **VALID_SCHEMA["properties"],
+                "sales": {
+                    "type": "integer",
+                    "x-unit": "vehicle",
+                    "x-uncertainty": {
+                        "kind": "source_absolute_field",
+                        "field": "missing_error",
+                    },
+                },
+            },
+        }
+        issues = validate_panel_schema(broken)
+        self.assertTrue(any("uncertainty field" in item.message for item in issues))
+        kind, error, basis = numeric_uncertainty_contract(
+            {
+                "type": "number",
+                "x-unit": "vehicle",
+                "x-uncertainty": {
+                    "kind": "source_absolute_field",
+                    "field": "reported_error",
+                },
+            },
+            {"value": 42, "reported_error": 0.5},
+        )
+        self.assertEqual(kind, "bounded")
+        self.assertEqual(str(error), "0.5")
+        self.assertEqual(basis["field"], "reported_error")
 
     def test_payload_is_validated_by_frozen_schema(self):
         self.assertEqual(
@@ -146,7 +201,7 @@ class PanelSchemaTests(unittest.TestCase):
                 "label": "Shenzhen",
                 "geometry": {
                     "type": "Point",
-                    "coordinates": [114.0579, 22.5431],
+                    "coordinates": [Decimal("114.0579"), Decimal("22.5431")],
                 },
                 "source_fields": {
                     "label": "location",

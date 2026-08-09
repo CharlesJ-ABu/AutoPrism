@@ -22,6 +22,10 @@ class EvidenceDomainTests(unittest.TestCase):
         right = {"dimensions": {"a": 1, "b": 2}, "value": 42, "单位": "台"}
         self.assertEqual(canonical_json(left), canonical_json(right))
         self.assertEqual(sha256_json(left), sha256_json(right))
+        self.assertEqual(
+            canonical_json({"value": Decimal("0.123456789012345678901")}),
+            '{"value":0.123456789012345678901}',
+        )
 
     def test_locator_contracts(self):
         validate_locator("pdf_page", {"page": 1})

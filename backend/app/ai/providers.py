@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Protocol
 
 import httpx
+import simplejson as json
 
 from app.domain.evidence import sha256_json
 
@@ -73,10 +74,10 @@ class DeterministicMappingProvider:
         marker = "Evidence fragments:\n"
         if marker not in user_prompt:
             raise ValueError("evidence context is missing")
-        fragments = json.loads(user_prompt.split(marker, 1)[1])
+        fragments = json.loads(user_prompt.split(marker, 1)[1], use_decimal=True)
         records = []
         for fragment in fragments:
-            source_value = json.loads(fragment["text"])
+            source_value = json.loads(fragment["text"], use_decimal=True)
             data: dict[str, Any] = {}
             evidence: dict[str, str] = {}
             for output_key, specification in self.mapping.get(
@@ -94,8 +95,12 @@ class DeterministicMappingProvider:
                     )
                 if transform == "number" and (
                     isinstance(value, bool)
-                    or not isinstance(value, (int, float))
-                    or not math.isfinite(value)
+                    or not isinstance(value, (int, float, Decimal))
+                    or (
+                        not value.is_finite()
+                        if isinstance(value, Decimal)
+                        else not math.isfinite(value)
+                    )
                 ):
                     raise ValueError(
                         f"field {output_key!r} is not already a finite JSON number"
@@ -182,7 +187,7 @@ class OpenAICompatibleProvider:
             body = response.json()
             content = body["choices"][0]["message"]["content"]
             return StructuredModelResponse(
-                data=json.loads(content),
+                data=json.loads(content, use_decimal=True),
                 provider=self.config.provider,
                 model=self.config.model,
                 raw_metadata={
@@ -225,7 +230,7 @@ class GeminiProvider:
             body = response.json()
             text = body["candidates"][0]["content"]["parts"][0]["text"]
             return StructuredModelResponse(
-                data=json.loads(text),
+                data=json.loads(text, use_decimal=True),
                 provider=self.config.provider,
                 model=self.config.model,
                 raw_metadata={"usage": body.get("usageMetadata", {})},
