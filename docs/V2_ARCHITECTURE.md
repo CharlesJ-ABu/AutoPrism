@@ -58,12 +58,15 @@ Source
   -> ObservationExtractionLink (exact run, record ordinal and field path)
   -> ObservationEvidenceSet / ObservationEvidenceLink
        (ordered metric/dimension claims and one-or-many fragments)
+  -> ObservationGeography / ObservationGeographyEvidence
+       (optional geo-scope-v1 plus ordered coordinate/label claims)
   -> MetricObservation (raw and normalized value)
   -> CalculationRun (deterministic, replayable operation)
   -> ValidationRun (cross-source agreement)
   -> ReviewCase (only when automation cannot resolve)
   -> TrustAssessment (append-only current-policy decision)
   -> L2InsightInput / L2Insight (eligible stored inputs only)
+  -> trusted-insight-map-v1 (current replaying Shell read model)
 ```
 
 M6 uses `evidence-extraction-v3`. A new direct observation origin is accepted
@@ -162,10 +165,24 @@ proximity, ordering, default value or other guess. Fresh and populated
 migration gates passed, as did the final 39/39 disposable-PostgreSQL backend suite and
 frontend typecheck/build/dependency audit.
 
-The current execution environment has no browser runtime. Earlier M1–M5 visual
-records remain historical evidence only; M6 still requires new same-size V1/V2
-screenshots, console inspection and desktop/mobile interaction smoke before its
-visual release gate can be marked complete.
+The 2026-08-10 current browser run closed the visual gate with new same-size
+V1/V2 screenshots, a 390×844 no-overflow result, 3D/2D and drawer interaction
+smoke and a clean warning/error console.
+
+## Evidence-bound insight map
+
+Migration `0006_v2_trusted_insight_map` adds optional immutable observation
+geography. `geo-scope-v1` does not geocode names: a frozen Panel Schema binds
+required label/coordinate or polygon fields, Extraction freezes their claim
+citations, PostgreSQL checks the direct-run/output/manifest relationship, and
+Trust independently rebuilds the scope.
+
+The deterministic map-aware L2 stores `trusted-insight-map-v1` features. The
+read model then checks that every referenced assessment is still latest and
+eligible, replays each geography and compares the rebuilt features byte-for-
+byte with immutable L2 output. The 3D globe and 2D tactical client consume only
+this read model. No reference-dataset feature qualifies today, so its visible
+empty state is correct rather than an incomplete demo.
 
 ## Runtime topology
 

@@ -1,6 +1,14 @@
 # AutoPrism V2 Test Record
 
-Last full validation: 2026-08-09 (Asia/Shanghai).
+Last full validation: 2026-08-10 (Asia/Shanghai).
+
+## Trusted-map milestone result
+
+The final disposable PostgreSQL suite passed 44/44 tests with database tests
+enabled. It adds coverage for `geo-scope-v1`, immutable claim-level geography,
+deterministic geography replay, current-only L2 map output and immediate map
+removal after a newer ineligible assessment. The earlier 39/39 M6 result below
+remains its historical release record.
 
 ## Automated backend
 
@@ -40,7 +48,17 @@ comes from the full disposable-PostgreSQL run, not the skipped fast run.
 
 ## Database migrations
 
-Current revision: `0005_v2_observation_lineage`.
+Current revision: `0006_v2_trusted_insight_map`.
+
+The 2026-08-10 `0006` gate:
+
+- upgraded a new database from zero and passed `alembic check`;
+- passed empty-database downgrade to `0005` and re-upgrade to `0006`;
+- backed up the real six-observation database, restored it into a new database,
+  and upgraded only that copy before starting the real Compose stack;
+- preserved all six observation rows and the pre/post normalized-value digest
+  `efeabae3f8044784c76bdca2e6fb73e4`;
+- created no geography rows for legacy empty scopes and inferred no coordinates.
 
 Fresh-database gate:
 
@@ -100,20 +118,21 @@ Previous Compose, 1440×800 desktop, 390×844 responsive, evidence drawer and
 clean-console results dated 2026-07-27 remain historical M1–M5 evidence. They
 are not relabeled as M6 validation.
 
-## M6 visual and browser gate
+## Current visual and browser gate
 
-**Not run.** The current execution environment has no available browser
-runtime. Therefore the following current-worktree evidence is still required:
+Passed on 2026-08-10 against the current production Compose bundle:
 
-- same-size V1/V2 desktop screenshots;
-- 390×844 responsive screenshots and horizontal-overflow inspection;
-- current-bundle browser console inspection;
-- loading, empty, error and dangerous-action interaction smoke;
-- evidence drawer, dynamic panel, revision, validation and trust-state smoke.
+- same-size 1440×800 V1 reference and V2 screenshots;
+- 390×844 V2 screenshot and full-page responsive record;
+- `scrollWidth=384`, `innerWidth=390`, no horizontal overflow;
+- 3D globe and 2D tactical switching plus industrial/cyber/ghost controls;
+- evidence terminal and compliant-acquisition drawer smoke;
+- honest zero-feature map for the real reference database;
+- no JavaScript console warning or error.
 
-An older screenshot or clean console record must not be substituted for this
-gate. M6 can be described as backend/data/frontend-build complete, but its
-visual release check remains pending.
+Artifacts are in `docs/visual-baselines/2026-08-10/`. The non-empty trusted-map
+path is proven by the PostgreSQL service/API integration test, not by inserting
+synthetic features into the real reference database.
 
 ## Known non-blocking warnings
 

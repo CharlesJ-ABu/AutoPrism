@@ -1,6 +1,6 @@
 # AutoPrism V1 → V2 Gap and Acceptance Matrix
 
-Current review date: 2026-08-09 (Asia/Shanghai)
+Current review date: 2026-08-10 (Asia/Shanghai)
 
 This document is the working acceptance ledger for the `v2` branch. `main`
 remains the frozen, unauthenticated V1 local edition and is used only as a
@@ -26,7 +26,7 @@ retained to show the original gap and must not be read as current M6 status.
 | Tests | V1 build and crawler gaps are documented | 23 backend tests, migration checks, frontend build, Compose and browser record dated 2026-07-25 | Historical evidence only until re-run in the current worktree |
 | Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Historical gap; dedicated Schema/UI DSL, trust, testing and release documents now exist |
 
-### M6 current delta
+### Current delta through M6.1
 
 - The V1-continuity cockpit and split component system remain implemented.
 - `evidence-extraction-v3` now freezes exact ordered extraction inputs.
@@ -37,10 +37,12 @@ retained to show the original gap and must not be read as current M6 status.
   v1-era policy descriptions.
 - Fresh and backed-up populated migration gates passed. The real six-observation
   audit produced 3 exact links and 3 unresolved without guessed backfill.
-- The final disposable-PostgreSQL backend suite passed 39/39 and frontend
-  typecheck/build/dependency audit passed.
-- The current environment has no browser runtime, so new M6 V1/V2 screenshots,
-  console, responsive and visual/interaction smoke remain pending.
+- The M6 disposable-PostgreSQL backend suite passed 39/39; the map milestone
+  increased the current complete suite to 44/44.
+- `geo-scope-v1`, immutable coordinate claims and `trusted-insight-map-v1`
+  now power real 3D/2D maps without decorative database facts.
+- New 1440×800 V1/V2 and 390×844 V2 baselines, console, responsive and
+  visual/interaction smoke passed on the current bundle.
 
 ## Non-negotiable trust findings
 
@@ -66,7 +68,8 @@ retained to show the original gap and must not be read as current M6 status.
 | M3 Operations workspace | Source pools, source registration, compliant collection jobs, human-action queue, extraction trigger and clear unavailable states | Collector integration tests and browser source/compliance/job/action smoke | Complete |
 | M4 Trust workspace | All evidence fragments, observations, calculations, validation runs, corrections and review decisions connected in UI | Migration/domain/API tests plus end-to-end provenance replay | Complete for current trust contract; eligibility/L2 remains M5 |
 | M5 Trusted L2 and release | Stored-input-only L2 or explicit unavailable state, full regression, docs/changelog/release gate and fast-forward push | Compose run, migration cycle, frontend audit/build, visual comparison and release checklist | Complete |
-| M6 Exact lineage and trust replay | v3 input manifest, normalized claim evidence, exact origins, three-axis validation and dynamic peer replay | `0005`, fresh/populated gates, 6/3/3 audit, 39/39 backend and frontend static gates; browser visual gate not executed | Implementation/data/static complete; visual release gate pending |
+| M6 Exact lineage and trust replay | v3 input manifest, normalized claim evidence, exact origins, three-axis validation and dynamic peer replay | `0005`, fresh/populated gates, 6/3/3 audit, 39/39 backend plus 2026-08-10 current visual closeout | Complete |
+| M6.1 Trusted dual insight map | Schema-bound geography, immutable coordinate citations, current-only L2 map contract and 3D/2D engines | `0006`, fresh/populated gates, 44/44 backend, frontend/Compose/browser baselines | Complete |
 | M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Not started |
 
 ## Feature acceptance ledger
@@ -92,6 +95,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Deterministic calculations | scoped Decimal engine and replay records | view and run plans | done | operational/replayable but not trust eligible until M7 |
 | Unit conversion registry | missing | missing | missing | missing |
 | L2 stored-data-only analysis | normalized eligible inputs and immutable hash | connected with explicit unavailable state | done | done for deterministic evidence summary |
+| V1-style insight map | immutable `geo-scope-v1` plus current `trusted-insight-map-v1` replay | real 3D globe/2D tactical engines and honest states | done | done; reference data correctly has zero qualified features |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |
 | Encrypted credential vault | SaaS-only deferred | explicit TODO required | missing | deferred |
 | Isolated custom React runtime | source storage only | explicit TODO required | hash test only | deferred |
@@ -240,9 +244,23 @@ has a real path with missing required behavior; **missing** has no usable path;
 - A fresh database upgraded through the entire graph and passed drift checks.
   The final full disposable-PostgreSQL backend suite passed 39/39; frontend
   typecheck, production build and dependency audit passed.
-- Current M6 browser verification is **not complete**. No browser runtime is
-  available in this environment, so new same-size desktop screenshots,
-  390×844 responsive checks, console inspection and visual/interaction smoke
-  remain release blockers. M1–M5 screenshots remain historical only.
+- Current browser verification completed on 2026-08-10. New same-size desktop
+  screenshots, 390×844 no-overflow checks, console inspection, 3D/2D switching
+  and evidence/acquisition drawer smoke passed. Artifacts are stored under
+  `docs/visual-baselines/2026-08-10/`.
 - General unit/currency/time conversion, precision/rounding, error propagation
   and trusted calculation-engine enablement remain M7.
+
+## M6.1 trusted-map verification record
+
+- Migration `0006_v2_trusted_insight_map` passed zero-to-head, empty
+  downgrade/re-upgrade and `alembic check`.
+- A restored copy of the real six-observation `0005` database upgraded without
+  changing the observation count or normalized-value digest; no legacy
+  coordinate was inferred.
+- The complete disposable-PostgreSQL backend suite passed 44/44.
+- The integration path proves two independent source/artifact/publisher inputs,
+  exact coordinate citations, Trust geography replay, deterministic L2 map
+  creation and immediate feature removal after a newer failed assessment.
+- Frontend typecheck/build and production dependency audit passed; DeckGL and
+  globe chunks are lazy-loaded and the audit reported zero vulnerabilities.

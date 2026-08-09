@@ -5,6 +5,33 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M6.1 — Trusted dual insight map (2026-08-10)
+
+- Added `geo-scope-v1` Schema metadata for evidence-bound point, line and zone
+  geometry. Coordinates must be required source fields with explicit
+  `degree_latitude`/`degree_longitude` units; no geocoding or default location
+  is inferred.
+- Added migration `0006_v2_trusted_insight_map` and immutable
+  `ObservationGeography`/`ObservationGeographyEvidence` histories with
+  deferred extraction-output, citation, field-path and manifest constraints.
+- Added independent Trust replay for the frozen geographic scope and citations.
+  Existing non-empty pre-contract geography causes migration to stop for
+  reviewed handling rather than being promoted automatically.
+- Bumped deterministic stored-input L2 to the map-aware v2 contract and froze
+  `trusted-insight-map-v1` features. Current reads dynamically replay every
+  referenced assessment and geography; a newer ineligible assessment removes
+  the feature without erasing historical L2.
+- Restored a real 3D globe plus DeckGL 2D tactical view with industrial/cyber/
+  ghost modes, selected-feature evidence entry, and explicit loading/error/
+  empty states. The local grid texture contains no synthetic country or event
+  data.
+- Passed 44/44 disposable-PostgreSQL backend tests, fresh and populated `0006`
+  migration gates, empty downgrade/re-upgrade, frontend typecheck/build and
+  zero-vulnerability dependency audit.
+- Captured new 1440×800 V1/V2 and 390×844 V2 baselines; 3D/2D, evidence drawer,
+  acquisition drawer and mobile overflow smoke passed with no console warning
+  or error.
+
 ### M6 — Exact observation lineage and fail-closed trust replay (2026-08-09)
 
 - Added migration `0005_v2_observation_lineage` with normalized

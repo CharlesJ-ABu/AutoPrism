@@ -334,6 +334,71 @@ class ObservationExtractionLink(Base):
     )
 
 
+class ObservationGeography(Base):
+    """Frozen evidence-bound geographic scope for one INFO observation."""
+
+    __tablename__ = "observation_geographies"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    scope: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "jsonb_typeof(scope) = 'object'",
+            name="ck_observation_geography_scope_object",
+        ),
+        CheckConstraint(
+            "scope ->> 'contract_version' = 'geo-scope-v1'",
+            name="ck_observation_geography_contract",
+        ),
+        CheckConstraint(
+            "evidence_count > 0",
+            name="ck_observation_geography_evidence_count",
+        ),
+    )
+
+
+class ObservationGeographyEvidence(Base):
+    """Ordered source claims that prove one frozen geographic scope."""
+
+    __tablename__ = "observation_geography_evidence"
+
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("observation_geographies.observation_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    evidence_fragment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_fragments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    field_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "ordinal >= 0",
+            name="ck_observation_geography_evidence_ordinal",
+        ),
+        UniqueConstraint(
+            "observation_id",
+            "evidence_fragment_id",
+            "field_path",
+            name="uq_observation_geography_claim_fragment",
+        ),
+    )
+
+
 class ExtractionRunInputSet(Base):
     """Frozen cardinality for one extraction request input manifest."""
 
@@ -656,6 +721,8 @@ for _immutable_model in (
     ObservationEvidenceLink,
     LineageBackfillAudit,
     ObservationExtractionLink,
+    ObservationGeography,
+    ObservationGeographyEvidence,
     ExtractionRunInputSet,
     ExtractionRunInput,
     ObservationRevision,

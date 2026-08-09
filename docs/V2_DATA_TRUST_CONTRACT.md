@@ -11,6 +11,13 @@ or JSON Schema validation. M6 policy versions frozen on 2026-08-09 are:
 Older policy labels remain immutable history but are not accepted as current
 eligibility proof.
 
+The Shell insight-map contracts frozen on 2026-08-10 are:
+
+- observation geography: `geo-scope-v1`;
+- L2 map output: `trusted-insight-map-v1`;
+- L2 engine/prompt: `deterministic-stored-summary-v2-map` /
+  `stored-input-contract-v2-map`.
+
 ## State boundaries
 
 These states are independent and must never be collapsed into one badge:
@@ -98,6 +105,14 @@ created three unique `backfill_exact` links and left three unresolved. The
 unresolved rows preserve their compatibility evidence and remain visibly
 unreplayable; no old observation, value or extraction run is rewritten.
 
+Migration `0006_v2_trusted_insight_map` adds an optional immutable
+`ObservationGeography` plus ordered `ObservationGeographyEvidence` claims.
+Non-empty historical `geographic_scope` without that contract stops migration
+for explicit review; empty legacy scopes remain empty. New geography must
+replay from the exact direct extraction record, required Schema fields,
+citations and frozen input manifest. A descriptive geography label, source URL
+hostname or evidence locator alone is not a coordinate authority.
+
 ## Deterministic calculations
 
 The implemented calculation engine is versioned Decimal code. Inputs are database
@@ -183,6 +198,13 @@ It does not browse, predict, fill missing facts or execute model mathematics.
 
 Historical L2 rows remain immutable if an input is later revised; attempting to
 create a new current L2 summary with the superseded input is rejected.
+
+Map features are a deterministic subset of L2 output. The
+`trusted-insight-map-v1` read model dynamically requires every stored input
+assessment to remain current, independently replays `geo-scope-v1`, and
+rebuilds the exact frozen feature list. A mismatch or stale peer returns no
+feature; it never edits the historical L2 row. Empty current results are a
+normal trust outcome and are rendered without filler locations.
 
 All V1 intelligence, time-series, vehicle and strategic-insight tables remain
 `legacy_unverified` as a namespace even where a legacy evidence link exists.

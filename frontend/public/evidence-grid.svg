@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 1024 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080b1c"/>
+      <stop offset="0.55" stop-color="#111334"/>
+      <stop offset="1" stop-color="#071520"/>
+    </linearGradient>
+    <pattern id="minor" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#22d3ee" stroke-opacity="0.12" stroke-width="1"/>
+    </pattern>
+    <pattern id="major" width="128" height="128" patternUnits="userSpaceOnUse">
+      <path d="M128 0H0V128" fill="none" stroke="#a78bfa" stroke-opacity="0.28" stroke-width="1.5"/>
+    </pattern>
+    <radialGradient id="scan">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="512" fill="url(#bg)"/>
+  <rect width="1024" height="512" fill="url(#minor)"/>
+  <rect width="1024" height="512" fill="url(#major)"/>
+  <ellipse cx="512" cy="256" rx="390" ry="210" fill="url(#scan)"/>
+  <path d="M0 256H1024M512 0V512" stroke="#e9d5ff" stroke-opacity="0.24" stroke-width="1"/>
+</svg>

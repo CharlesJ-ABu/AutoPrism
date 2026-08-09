@@ -2,18 +2,18 @@
 
 ## V2.0 release status
 
-The M5 local-first V2 release is complete on branch `v2`. M6 backend, data,
-migration and frontend static gates are complete, but the M6 release closeout is
-not: the current environment has no browser runtime, so new same-size V1/V2
-screenshots, responsive/console checks and visual interaction smoke remain
-pending. Historical screenshots are not accepted as current M6 evidence.
+The M5 local-first V2 release and M6 exact-lineage release are complete on
+branch `v2`. On 2026-08-10 the current browser runtime closed the outstanding
+M6 visual gate with new same-size V1/V2 screenshots, responsive/console checks
+and interaction smoke. Historical screenshots were not substituted.
 
 M6 includes the V1-continuity cockpit, immutable dashboard lifecycle, compliant
 direct-source operations, exact observation/extraction lineage, auditable
 INFO/validation/review workflows, append-only dynamically replayed trust
 eligibility and stored-input-only deterministic L2. See
 [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
-known limitations. M7 unit/currency/error work is not represented as complete.
+known limitations. The trusted-map follow-up is complete; M7
+unit/currency/error work is not represented as complete.
 
 ## Status at branch creation
 
@@ -103,7 +103,7 @@ Title-to-proposal, editable structured JSON, immutable save, dashboard
 switching, and metric/table/provenance rendering are operational. The full UI
 DSL component registry and isolated custom React runtime remain pending.
 
-## M6 — Exact lineage and trust replay (implementation complete; visual gate pending)
+## M6 — Exact lineage and trust replay (complete)
 
 - Add normalized multi-claim/multi-fragment observation evidence sets.
 - Bind direct observations to exact extraction run, record ordinal and field
@@ -120,9 +120,26 @@ DSL component registry and isolated custom React runtime remain pending.
 - Pass the final disposable-PostgreSQL backend suite 39/39 and frontend
   typecheck/build/dependency audit.
 
-Exit status: implementation/data/static gates pass. New desktop/mobile
-screenshots, console inspection and visual interaction smoke remain blocked by
-the unavailable browser runtime and must close before M6 release publication.
+Exit status: implementation/data/static gates pass. The 2026-08-10 browser run
+also passed desktop/mobile screenshots, console inspection, 3D/2D switching,
+evidence/operations drawers and horizontal-overflow inspection.
+
+## M6.1 — Evidence-bound dual insight map (complete)
+
+- Added `geo-scope-v1`, binding point/flow/zone geometry to required frozen
+  Schema fields with explicit latitude/longitude units.
+- Added immutable observation-geography and ordered claim-evidence tables under
+  migration `0006_v2_trusted_insight_map`.
+- Added `trusted-insight-map-v1` to deterministic L2 output and a current-only
+  replaying map read model.
+- Replaced the decorative map with lazy-loaded `react-globe.gl` and DeckGL
+  3D/2D views, three visual modes, honest empty/error/loading states and an
+  evidence-chain entry point.
+- Passed fresh and populated migration gates, 44/44 backend tests, frontend
+  static/dependency gates and current browser visual/interaction smoke.
+
+Exit: no map feature is returned when its L2 input assessment becomes stale or
+when geography, citations, extraction manifest or frozen output cannot replay.
 
 ## M7 — Units, currency and error semantics (not started)
 

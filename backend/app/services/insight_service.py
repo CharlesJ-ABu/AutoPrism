@@ -6,6 +6,10 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.evidence import sha256_json
+from app.domain.map_contract import (
+    TRUSTED_MAP_CONTRACT_VERSION,
+    build_trusted_map_features,
+)
 from app.models.evidence import (
     L2Insight,
     L2InsightInput,
@@ -15,8 +19,8 @@ from app.models.evidence import (
 from app.services.trust_service import TRUST_POLICY_VERSION, TrustService
 
 
-L2_ENGINE_VERSION = "deterministic-stored-summary-v1"
-L2_PROMPT_VERSION = "stored-input-contract-v1"
+L2_ENGINE_VERSION = "deterministic-stored-summary-v2-map"
+L2_PROMPT_VERSION = "stored-input-contract-v2-map"
 
 
 class InsightService:
@@ -103,6 +107,23 @@ class InsightService:
         if existing is not None:
             return existing
 
+        geography_entries = []
+        for observation, assessment in zip(observations, assessments):
+            geography = await trust_service.geography_integrity(observation)
+            geography_entries.append(
+                {
+                    "observation_id": observation.id,
+                    "trust_assessment_id": assessment.id,
+                    "panel_version_key": observation.panel_version_key,
+                    "scope": geography["scope"],
+                    "geography_accepted": geography["accepted"],
+                }
+            )
+        map_features = build_trusted_map_features(
+            input_hash=input_hash,
+            entries=geography_entries,
+        )
+
         title = f"可信输入摘要 · {len(observations)} 项指标"
         output = {
             "summary": (
@@ -115,6 +136,8 @@ class InsightService:
                 "这是确定性证据摘要，不是外部事实补充或预测。",
                 "任何输入被修订后，本历史摘要保留但不再代表当前资格集合。",
             ],
+            "map_contract_version": TRUSTED_MAP_CONTRACT_VERSION,
+            "map_features": map_features,
         }
         insight = L2Insight(
             title=title,

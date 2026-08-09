@@ -21,7 +21,12 @@ from app.domain.evidence import (
     sha256_json,
     validate_locator,
 )
-from app.domain.panel_schema import validate_observation_contract
+from app.domain.map_contract import is_supported_geographic_scope
+from app.domain.panel_schema import (
+    build_geographic_scope,
+    geographic_source_fields,
+    validate_observation_contract,
+)
 from app.models.dashboards import ExtractionRun, PanelVersion
 from app.models.evidence import (
     CalculationRun,
@@ -33,6 +38,8 @@ from app.models.evidence import (
     ObservationEvidenceLink,
     ObservationEvidenceSet,
     ObservationExtractionLink,
+    ObservationGeography,
+    ObservationGeographyEvidence,
     ObservationRevision,
     ReviewCase,
     ReviewDecision,
@@ -928,6 +935,158 @@ class TrustService:
             "calculation_engine_trusted": calculation_engine_trusted,
         }
 
+    async def geography_integrity(
+        self,
+        observation: MetricObservation,
+    ) -> dict[str, Any]:
+        """Replay an observation's optional geo-scope-v1 evidence contract."""
+
+        details: dict[str, Any] = {
+            "accepted": False,
+            "scope": observation.geographic_scope,
+            "structural_complete": False,
+            "scope_replay_matches": False,
+            "citation_replay_matches": False,
+            "input_manifest_integrity": False,
+            "replay_error": None,
+        }
+        try:
+            scope = observation.geographic_scope
+            geography = await self.db.get(ObservationGeography, observation.id)
+            links = (
+                await self.db.execute(
+                    select(ObservationGeographyEvidence)
+                    .where(
+                        ObservationGeographyEvidence.observation_id
+                        == observation.id
+                    )
+                    .order_by(ObservationGeographyEvidence.ordinal)
+                )
+            ).scalars().all()
+            if scope == {}:
+                details["structural_complete"] = geography is None and not links
+                return details
+            if (
+                not isinstance(scope, dict)
+                or geography is None
+                or geography.scope != scope
+                or not is_supported_geographic_scope(scope)
+            ):
+                return details
+            source_fields = set(scope["source_fields"].values())
+            links_by_claim: dict[str, list[ObservationGeographyEvidence]] = {}
+            for link in links:
+                links_by_claim.setdefault(link.claim_key, []).append(link)
+            details["structural_complete"] = bool(
+                links
+                and geography.evidence_count == len(links)
+                and [item.ordinal for item in links] == list(range(len(links)))
+                and set(links_by_claim) == source_fields
+                and all(item.field_path and item.claim_key for item in links)
+            )
+
+            extraction_rows = (
+                await self.db.execute(
+                    select(ObservationExtractionLink, ExtractionRun)
+                    .join(
+                        ExtractionRun,
+                        ObservationExtractionLink.extraction_run_id
+                        == ExtractionRun.id,
+                    )
+                    .where(
+                        ObservationExtractionLink.observation_id == observation.id
+                    )
+                )
+            ).all()
+            if len(extraction_rows) != 1:
+                return details
+            extraction_link, extraction_run = extraction_rows[0]
+            if extraction_link.match_method != "direct_write":
+                return details
+            panel = await self.db.get(PanelVersion, extraction_run.panel_version_id)
+            if panel is None:
+                return details
+            validation = (
+                extraction_run.validation
+                if isinstance(extraction_run.validation, dict)
+                else {}
+            )
+            if (
+                validation.get("valid") is not True
+                or validation.get("extraction_contract_version")
+                != EXTRACTION_CONTRACT_VERSION
+                or str(panel.id) != observation.panel_version_key
+                or str(panel.version) != observation.schema_version
+            ):
+                return details
+            manifest = await self._input_manifest_integrity(extraction_run)
+            details["input_manifest_integrity"] = manifest["accepted"]
+            if not manifest["accepted"]:
+                return details
+            records = (
+                extraction_run.output.get("records")
+                if isinstance(extraction_run.output, dict)
+                else None
+            )
+            record = (
+                records[extraction_link.output_record_ordinal]
+                if isinstance(records, list)
+                and 0 <= extraction_link.output_record_ordinal < len(records)
+                else None
+            )
+            data = record.get("data") if isinstance(record, dict) else None
+            citations = record.get("evidence") if isinstance(record, dict) else None
+            if not isinstance(data, dict) or not isinstance(citations, dict):
+                return details
+            expected_scope = build_geographic_scope(panel.data_schema, data)
+            details["scope_replay_matches"] = expected_scope == scope
+
+            expected_fields = set(geographic_source_fields(panel.data_schema))
+            citation_replay_matches = bool(
+                expected_fields
+                and expected_fields == source_fields
+                and set(links_by_claim) == expected_fields
+            )
+            if citation_replay_matches:
+                for claim_key, claim_links in links_by_claim.items():
+                    citation = citations.get(claim_key)
+                    cited_ids = (
+                        [citation]
+                        if isinstance(citation, str)
+                        else citation
+                        if isinstance(citation, list)
+                        and citation
+                        and all(isinstance(item, str) for item in citation)
+                        else None
+                    )
+                    linked_ids = [str(item.evidence_fragment_id) for item in claim_links]
+                    if (
+                        cited_ids is None
+                        or len(cited_ids) != len(linked_ids)
+                        or set(cited_ids) != set(linked_ids)
+                        or any(
+                            item.evidence_fragment_id not in manifest["fragment_ids"]
+                            or item.field_path
+                            != (
+                                f"$.records[{extraction_link.output_record_ordinal}]"
+                                f".data.{claim_key}"
+                            )
+                            for item in claim_links
+                        )
+                    ):
+                        citation_replay_matches = False
+                        break
+            details["citation_replay_matches"] = citation_replay_matches
+            details["accepted"] = bool(
+                details["structural_complete"]
+                and details["input_manifest_integrity"]
+                and details["scope_replay_matches"]
+                and details["citation_replay_matches"]
+            )
+        except (KeyError, LookupError, TypeError, ValueError) as exc:
+            details["replay_error"] = str(exc)
+        return details
+
     async def _replay_validation(
         self,
         validation: ValidationRun,
@@ -1073,6 +1232,16 @@ class TrustService:
         """
 
         if not assessment.eligible or assessment.policy_version != TRUST_POLICY_VERSION:
+            return False
+        latest_assessment_id = (
+            await self.db.execute(
+                select(TrustAssessment.id)
+                .where(TrustAssessment.observation_id == assessment.observation_id)
+                .order_by(desc(TrustAssessment.created_at), desc(TrustAssessment.id))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest_assessment_id != assessment.id:
             return False
         observation = await self.db.get(
             MetricObservation,

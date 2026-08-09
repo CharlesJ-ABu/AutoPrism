@@ -4,10 +4,10 @@ Release scope: local-first V2 evidence cockpit on branch `v2`. Branch `main`
 remains the unmodified, unauthenticated V1 local edition and is not a merge
 target.
 
-Current M6 state on 2026-08-09: backend, data migration and frontend static
-gates pass. The current browser/visual gate has not run because this execution
-environment has no browser runtime. M6 release closeout is therefore pending;
-historical M1–M5 screenshots are not current acceptance evidence.
+Current state on 2026-08-10: M6 lineage and its visual closeout pass. The
+evidence-bound dual-map follow-up also passes backend, migration, frontend,
+Compose and browser gates. Historical M1–M5 screenshots were not reused as
+current acceptance evidence.
 
 ## Required gates
 
@@ -45,9 +45,13 @@ historical M1–M5 screenshots are not current acceptance evidence.
   other guess; the immutable audit records `exact_output_match_only`.
 - [x] Frontend `npm run typecheck`, `npm run build` and `npm audit` passed with
   zero reported vulnerabilities.
-- [ ] Capture current-worktree same-size V1/V2 desktop screenshots and complete
-  desktop/mobile, console, responsive and interaction smoke. Browser runtime is
-  currently unavailable.
+- [x] Captured current-worktree same-size V1/V2 desktop screenshots and
+  completed desktop/mobile, console, responsive and interaction smoke.
+- [x] Migration `0006_v2_trusted_insight_map` passed fresh, empty
+  downgrade/re-upgrade and backed-up populated-copy gates without inferring any
+  legacy coordinates.
+- [x] `trusted-insight-map-v1` exposes only current assessment/geography replay;
+  a stale assessment removes a feature while preserving immutable L2 history.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
@@ -87,9 +91,8 @@ insight.
   React source is stored but not executed.
 - L2 is a deterministic stored-input evidence summary, not predictive or
   externally augmented analysis.
-- M6's new browser screenshots, console inspection and visual/interaction smoke
-  are pending because no browser runtime is available in the current
-  environment.
+- General panel-level `map` remains outside the safe UI DSL; the implemented
+  Shell map has its own `trusted-insight-map-v1` contract.
 
 None of these limitations is represented as complete in the UI or release
 record.

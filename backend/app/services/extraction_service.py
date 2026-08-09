@@ -13,7 +13,12 @@ from app.ai.providers import (
     validate_deterministic_mapping,
 )
 from app.domain.evidence import canonical_json, sha256_bytes, sha256_json
-from app.domain.panel_schema import SchemaIssue, validate_panel_payload
+from app.domain.panel_schema import (
+    SchemaIssue,
+    build_geographic_scope,
+    geographic_source_fields,
+    validate_panel_payload,
+)
 from app.models.dashboards import ExtractionRun, PanelVersion
 from app.models.evidence import (
     EvidenceFragment,
@@ -23,6 +28,8 @@ from app.models.evidence import (
     ObservationEvidenceLink,
     ObservationEvidenceSet,
     ObservationExtractionLink,
+    ObservationGeography,
+    ObservationGeographyEvidence,
     SourceSnapshot,
     TrustState,
 )
@@ -224,7 +231,9 @@ class ExtractionService:
             ) from exc
 
         issues: list[SchemaIssue] = []
-        valid_records: list[tuple[int, dict[str, Any], dict[str, list[str]]]] = []
+        valid_records: list[
+            tuple[int, dict[str, Any], dict[str, list[str]], dict[str, Any]]
+        ] = []
         records = response.data.get("records")
         if not isinstance(records, list):
             issues.append(SchemaIssue("$.records", "records must be an array"))
@@ -246,6 +255,20 @@ class ExtractionService:
                 )
                 continue
             record_issues.extend(validate_panel_payload(panel.data_schema, data))
+            geographic_scope: dict[str, Any] = {}
+            if not record_issues:
+                try:
+                    geographic_scope = build_geographic_scope(
+                        panel.data_schema,
+                        data,
+                    )
+                except ValueError as exc:
+                    record_issues.append(
+                        SchemaIssue(
+                            f"$.records[{index}].data",
+                            f"geographic contract failed: {exc}",
+                        )
+                    )
             normalized_evidence: dict[str, list[str]] = {}
             for field in data:
                 citation = evidence.get(field)
@@ -298,7 +321,9 @@ class ExtractionService:
                     )
             issues.extend(record_issues)
             if not record_issues:
-                valid_records.append((index, data, normalized_evidence))
+                valid_records.append(
+                    (index, data, normalized_evidence, geographic_scope)
+                )
 
         validation = {
             "valid": not issues,
@@ -354,7 +379,7 @@ class ExtractionService:
         observation_ids: list[uuid.UUID] = []
         if not issues:
             properties = panel.data_schema.get("properties", {})
-            for record_index, data, evidence in valid_records:
+            for record_index, data, evidence, geographic_scope in valid_records:
                 dimensions = {
                     key: value
                     for key, value in data.items()
@@ -395,7 +420,7 @@ class ExtractionService:
                         normalized_value={"value": value},
                         unit=definition.get("x-unit"),
                         dimensions=dimensions,
-                        geographic_scope={},
+                        geographic_scope=geographic_scope,
                         extraction_model=response.model,
                         extraction_prompt_version=panel.extraction_prompt_version,
                         trust_state=TrustState.UNVERIFIED,
@@ -441,6 +466,40 @@ class ExtractionService:
                             match_method="direct_write",
                         )
                     )
+                    if geographic_scope:
+                        geographic_claims = [
+                            (
+                                field,
+                                evidence_id,
+                                f"$.records[{record_index}].data.{field}",
+                            )
+                            for field in geographic_source_fields(panel.data_schema)
+                            for evidence_id in evidence[field]
+                        ]
+                        self.db.add(
+                            ObservationGeography(
+                                observation_id=observation.id,
+                                scope=geographic_scope,
+                                evidence_count=len(geographic_claims),
+                            )
+                        )
+                        await self.db.flush()
+                        for ordinal, (
+                            claim_key,
+                            evidence_id,
+                            geographic_field_path,
+                        ) in enumerate(geographic_claims):
+                            self.db.add(
+                                ObservationGeographyEvidence(
+                                    observation_id=observation.id,
+                                    ordinal=ordinal,
+                                    evidence_fragment_id=fragment_by_id[
+                                        evidence_id
+                                    ].id,
+                                    claim_key=claim_key,
+                                    field_path=geographic_field_path,
+                                )
+                            )
                     observation_ids.append(observation.id)
 
         await self.db.commit()

@@ -339,6 +339,49 @@ export interface L2Insight {
   }>;
 }
 
+export type TrustedMapGeometry =
+  | { type: 'Point'; coordinates: [number, number] }
+  | { type: 'LineString'; coordinates: [[number, number], [number, number]] }
+  | { type: 'Polygon'; coordinates: Array<Array<[number, number]>> };
+
+export interface TrustedMapFeature {
+  id: string;
+  contract_version: 'trusted-insight-map-v1';
+  insight_id: string;
+  title: string;
+  summary: string;
+  display_type:
+    | 'MARKER'
+    | 'HOTSPOT'
+    | 'RIPPLE'
+    | 'FLOW'
+    | 'COMPARISON'
+    | 'SHIELD_UP'
+    | 'ZONE';
+  label: string;
+  geometry: TrustedMapGeometry;
+  observation_ids: string[];
+  trust_assessment_ids: string[];
+  panel_version_keys: string[];
+  input_hash: string;
+  engine_version: string;
+  prompt_version: string;
+  created_at: string;
+}
+
+export interface TrustedMapResponse {
+  contract_version: 'trusted-insight-map-v1';
+  features: TrustedMapFeature[];
+  stats: {
+    scanned_insights: number;
+    current_insights: number;
+    stale_or_invalid_insights: number;
+    unsupported_contract_insights: number;
+    without_geography: number;
+    replay_mismatch_insights: number;
+  };
+}
+
 export interface Evidence {
   fragment_id: string;
   locator_type: string;
@@ -575,6 +618,11 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listInsights: () => request<L2Insight[]>('/insights'),
+  listMapFeatures: (panelVersionKeys: string[]) => {
+    const params = new URLSearchParams({ limit: '200' });
+    panelVersionKeys.forEach((key) => params.append('panel_version_key', key));
+    return request<TrustedMapResponse>(`/insights/map-features?${params.toString()}`);
+  },
   createInsight: (payload: { observation_ids: string[]; created_by: string }) =>
     request<L2Insight>('/insights', {
       method: 'POST',

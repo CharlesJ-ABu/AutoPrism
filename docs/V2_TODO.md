@@ -1,19 +1,10 @@
 # AutoPrism V2 / SaaS TODO
 
-## M6 release closeout
+## Completed closeout
 
-- Obtain a browser runtime and capture new same-size V1/V2 desktop screenshots
-  from the exact current worktree.
-- Repeat 390×844 responsive and horizontal-overflow checks.
-- Inspect the current JavaScript console and exercise loading, empty, error,
-  dangerous-action, dynamic panel, evidence, revision, validation and trust
-  interactions.
-- Record the final commit, verify `origin/v2` is fast-forward and push only
-  after the visual gate passes. Never merge or open a `v2` → `main` PR.
-
-This verification-runtime gap is separate from authenticated Playwright
-collection as a product feature. The current environment simply has no browser
-with which to run the M6 visual release gate.
+The M6 current-worktree browser gate and the `trusted-insight-map-v1` dual-map
+follow-up passed on 2026-08-10. Baselines and exact results are recorded under
+`docs/visual-baselines/2026-08-10/` and `V2_TESTING.md`.
 
 ## M7 — Units, currency and uncertainty
 

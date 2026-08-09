@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Cpu, FileJson2, Fingerprint } from 'lucide-react';
 
 import { DashboardPanel } from './components/dashboard/DashboardPanel';
@@ -14,6 +14,7 @@ import {
   type DashboardListItem,
   type DashboardView,
   type PanelView,
+  type TrustedMapResponse,
 } from './lib/v2-api';
 
 const PERSPECTIVE_TERMS: Record<Exclude<Perspective, 'all'>, string[]> = {
@@ -32,6 +33,9 @@ function App() {
   const [dashboards, setDashboards] = useState<DashboardListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [view, setView] = useState<DashboardView>();
+  const [mapResponse, setMapResponse] = useState<TrustedMapResponse>();
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState('');
   const [selectedPanel, setSelectedPanel] = useState<PanelView>();
   const [query, setQuery] = useState('');
   const [perspective, setPerspective] = useState<Perspective>('all');
@@ -40,6 +44,26 @@ function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
+  const mapLoadGeneration = useRef(0);
+
+  const loadMapFeatures = async (panels: PanelView[]) => {
+    const generation = mapLoadGeneration.current + 1;
+    mapLoadGeneration.current = generation;
+    setMapLoading(true);
+    setMapError('');
+    setMapResponse(undefined);
+    try {
+      const response = await api.listMapFeatures(panels.map((panel) => panel.id));
+      if (mapLoadGeneration.current === generation) setMapResponse(response);
+    } catch (reason) {
+      if (mapLoadGeneration.current === generation) {
+        setMapResponse(undefined);
+        setMapError(reason instanceof Error ? reason.message : '地图加载失败');
+      }
+    } finally {
+      if (mapLoadGeneration.current === generation) setMapLoading(false);
+    }
+  };
 
   const loadDashboards = async (preferredId?: string) => {
     setLoading(true);
@@ -51,9 +75,14 @@ function App() {
       setSelectedId(id);
       const dashboard = items.find((item) => item.id === id);
       if (dashboard?.latest_version) {
-        setView(await api.getDashboardView(id, dashboard.latest_version.version));
+        const nextView = await api.getDashboardView(id, dashboard.latest_version.version);
+        setView(nextView);
+        void loadMapFeatures(nextView.panels);
       } else {
+        mapLoadGeneration.current += 1;
         setView(undefined);
+        setMapResponse(undefined);
+        setMapLoading(false);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '加载失败');
@@ -71,12 +100,17 @@ function App() {
     setSelectedPanel(undefined);
     setError('');
     if (!item.latest_version) {
+      mapLoadGeneration.current += 1;
       setView(undefined);
+      setMapResponse(undefined);
+      setMapLoading(false);
       return;
     }
     setLoading(true);
     try {
-      setView(await api.getDashboardView(item.id, item.latest_version.version));
+      const nextView = await api.getDashboardView(item.id, item.latest_version.version);
+      setView(nextView);
+      void loadMapFeatures(nextView.panels);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '加载失败');
     } finally {
@@ -89,7 +123,9 @@ function App() {
     setError('');
     setSelectedPanel(undefined);
     try {
-      setView(await api.getDashboardView(dashboardId, version));
+      const nextView = await api.getDashboardView(dashboardId, version);
+      setView(nextView);
+      void loadMapFeatures(nextView.panels);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '版本加载失败');
     } finally {
@@ -149,7 +185,16 @@ function App() {
 
       {view && (
         <>
-          <SituationMap panels={view.panels} />
+          <SituationMap
+            response={mapResponse}
+            loading={mapLoading}
+            error={mapError}
+            onRetry={() => void loadMapFeatures(view.panels)}
+            onInspectPanel={(panelVersionKey) => {
+              const panel = view.panels.find((item) => item.id === panelVersionKey);
+              if (panel) setSelectedPanel(panel);
+            }}
+          />
           <section className="audit-strip" aria-label="可信度摘要">
             <div>
               <CheckCircle2 />

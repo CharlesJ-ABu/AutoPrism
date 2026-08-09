@@ -26,6 +26,37 @@ A panel Schema must:
 Units, time basis, geography and aggregation are data semantics. They are not
 visual labels and must not be inferred by the renderer.
 
+### Executable geography for the Shell map
+
+A descriptive string such as `"US"` remains valid legacy metadata but grants
+no map authority. A new feature may be mapped only with `geo-scope-v1`:
+
+```json
+{
+  "x-autoprism": {
+    "geographic_dimension": {
+      "contract_version": "geo-scope-v1",
+      "display_type": "HOTSPOT",
+      "label_field": "location",
+      "latitude_field": "latitude",
+      "longitude_field": "longitude"
+    }
+  }
+}
+```
+
+Every referenced field must exist and be required. Latitude and longitude are
+finite JSON numbers with `x-unit: degree_latitude` and
+`x-unit: degree_longitude`. Flow-style nodes additionally bind required end
+coordinates. Zone geometry binds a required closed `[longitude, latitude]`
+ring with 4–500 positions. `MARKER`, `HOTSPOT`, `RIPPLE`, `FLOW`,
+`COMPARISON`, `SHIELD_UP` and `ZONE` are the only display types.
+
+Extraction freezes all geographic claim citations separately from the metric
+citation. Missing fields, invalid ranges, missing citations or unsupported
+geometry make the extraction invalid; neither the client nor L2 geocodes a
+label or supplies coordinates.
+
 ## Supported UI DSL nodes
 
 ### `stack`
@@ -98,8 +129,10 @@ explicitly unavailable until they have:
 - accessibility and responsive tests;
 - evidence-aware labels and unit handling.
 
-The situation map in the V2 Shell is not a general panel DSL node. It plots
-only explicit coordinates already present in returned evidence locators.
+The situation map in the V2 Shell is not a general panel DSL node. It consumes
+only `trusted-insight-map-v1` features built from `geo-scope-v1`, current
+ELIGIBLE inputs and replayable claim citations. A panel-level `map` node remains
+unsupported until the richer DSL milestone.
 
 ## Custom React
 

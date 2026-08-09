@@ -22,6 +22,8 @@ from app.models.evidence import (
     ObservationEvidenceLink,
     ObservationEvidenceSet,
     ObservationExtractionLink,
+    ObservationGeography,
+    ObservationGeographyEvidence,
     SourceSnapshot,
     ValidationRun,
     VerificationState,
@@ -295,6 +297,260 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 )
             )
             self.assertEqual(action_count, 1)
+
+    async def test_trusted_insight_map_requires_replayable_geography(self):
+        suffix = uuid.uuid4().hex
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            patch.object(settings, "ARTIFACT_STORAGE_PATH", temporary_directory),
+        ):
+            async with async_session_maker() as db:
+                pool = SourcePool(
+                    key=f"map-{suffix}",
+                    name="Trusted map",
+                    topic="Automotive",
+                )
+                dashboard = Dashboard(
+                    key=f"map-dashboard-{suffix}",
+                    title="Trusted map",
+                )
+                db.add_all([pool, dashboard])
+                await db.flush()
+                dashboard_version = DashboardVersion(
+                    dashboard_id=dashboard.id,
+                    version=1,
+                    research_brief={"title": "Trusted map"},
+                )
+                panel = PanelDefinition(
+                    dashboard_id=dashboard.id,
+                    key="regional-sales",
+                )
+                db.add_all([dashboard_version, panel])
+                await db.flush()
+                panel_version = PanelVersion(
+                    panel_id=panel.id,
+                    dashboard_version_id=dashboard_version.id,
+                    version=1,
+                    title="Regional sales",
+                    data_schema={
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "type": "object",
+                        "properties": {
+                            "location": {"type": "string"},
+                            "sales": {"type": "integer", "x-unit": "vehicle"},
+                            "latitude": {
+                                "type": "number",
+                                "x-unit": "degree_latitude",
+                            },
+                            "longitude": {
+                                "type": "number",
+                                "x-unit": "degree_longitude",
+                            },
+                        },
+                        "required": [
+                            "location",
+                            "sales",
+                            "latitude",
+                            "longitude",
+                        ],
+                        "x-autoprism": {
+                            "time_dimension": "report",
+                            "geographic_dimension": {
+                                "contract_version": "geo-scope-v1",
+                                "display_type": "HOTSPOT",
+                                "label_field": "location",
+                                "latitude_field": "latitude",
+                                "longitude_field": "longitude",
+                            },
+                            "aggregation": {
+                                "sales": "sum",
+                                "latitude": "latest",
+                                "longitude": "latest",
+                            },
+                            "visualization_mapping": {
+                                "category": "location",
+                                "value": "sales",
+                            },
+                        },
+                    },
+                    template_kind=TemplateKind.UI_DSL,
+                    ui_dsl={
+                        "type": "metric",
+                        "field": "sales",
+                        "label": "Sales",
+                    },
+                    visualization_contract={"type": "metric"},
+                    extraction_prompt="Extract cited regional sales and coordinates.",
+                    model_settings={
+                        "extraction_engine": "json_mapping_v1",
+                        "field_mappings": {
+                            "location": "location",
+                            "sales": "sales",
+                            "latitude": "latitude",
+                            "longitude": "longitude",
+                        },
+                    },
+                    source_pool_id=pool.id,
+                )
+                db.add(panel_version)
+                await db.flush()
+
+                observation_ids = []
+                store = LocalArtifactStore(Path(temporary_directory))
+                for index, publisher in enumerate(("official-a", "official-b")):
+                    source = SourceDefinition(
+                        pool_id=pool.id,
+                        key=f"map-source-{index}-{suffix}",
+                        name=f"Map source {index}",
+                        canonical_url=f"https://map-{index}.example.test/report",
+                        kind=SourceKind.API,
+                        global_reputation=1,
+                        topic_authority=1,
+                        request_config={"publisher_identity": publisher},
+                    )
+                    db.add(source)
+                    await db.flush()
+                    job = CollectionJob(
+                        source_definition_id=source.id,
+                        idempotency_key=f"map:{index}:{suffix}",
+                    )
+                    db.add(job)
+                    await db.commit()
+                    source_payload = (
+                        '{"location":"Shenzhen","sales":42,'
+                        '"latitude":22.5431,"longitude":114.0579,'
+                        f'"source_marker":"{publisher}"}}'
+                    ).encode()
+                    collected = await CollectionService(
+                        db,
+                        fetcher=FakeFetcher(
+                            source_payload,
+                            "application/json",
+                        ),
+                        artifact_store=store,
+                    ).run_job(job.id)
+                    extracted = await ExtractionService(
+                        db,
+                        DeterministicMappingProvider(panel_version.model_settings),
+                    ).extract(
+                        panel_version_id=panel_version.id,
+                        snapshot_id=collected.result_snapshot_id,
+                    )
+                    observations = [
+                        await db.get(MetricObservation, item)
+                        for item in extracted.observation_ids
+                    ]
+                    sales = next(
+                        item for item in observations if item.metric_key == "sales"
+                    )
+                    observation_ids.append(sales.id)
+
+                    geography = await db.get(ObservationGeography, sales.id)
+                    self.assertEqual(geography.scope["contract_version"], "geo-scope-v1")
+                    self.assertEqual(
+                        geography.scope["geometry"],
+                        {"type": "Point", "coordinates": [114.0579, 22.5431]},
+                    )
+                    geography_links = (
+                        await db.execute(
+                            select(ObservationGeographyEvidence)
+                            .where(
+                                ObservationGeographyEvidence.observation_id
+                                == sales.id
+                            )
+                            .order_by(ObservationGeographyEvidence.ordinal)
+                        )
+                    ).scalars().all()
+                    self.assertEqual(
+                        [item.claim_key for item in geography_links],
+                        ["location", "latitude", "longitude"],
+                    )
+
+                validation, review = await VerificationService(
+                    db
+                ).validate_observations(
+                    observation_ids,
+                    absolute_tolerance=0,
+                    relative_tolerance=0,
+                )
+                self.assertEqual(validation.state, VerificationState.PASSED)
+                self.assertIsNone(review)
+                assessment = await TrustService(
+                    db,
+                    artifact_store=store,
+                ).assess(
+                    observation_id=observation_ids[0],
+                    validation_run_id=validation.id,
+                )
+                self.assertTrue(assessment.eligible)
+                geography_replay = await TrustService(
+                    db,
+                    artifact_store=store,
+                ).geography_integrity(
+                    await db.get(MetricObservation, observation_ids[0])
+                )
+                self.assertTrue(geography_replay["accepted"], geography_replay)
+
+                transport = httpx.ASGITransport(app=app)
+                async with httpx.AsyncClient(
+                    transport=transport,
+                    base_url="http://test",
+                ) as client:
+                    insight_response = await client.post(
+                        "/api/v2/insights",
+                        json={
+                            "observation_ids": [str(observation_ids[0])],
+                            "created_by": "map-integration-test",
+                        },
+                    )
+                    self.assertEqual(
+                        insight_response.status_code,
+                        201,
+                        insight_response.text,
+                    )
+                    frozen_features = insight_response.json()["output"][
+                        "map_features"
+                    ]
+                    self.assertEqual(len(frozen_features), 1)
+                    self.assertEqual(
+                        frozen_features[0]["geometry"]["coordinates"],
+                        [114.0579, 22.5431],
+                    )
+                    map_response = await client.get(
+                        "/api/v2/insights/map-features",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(map_response.status_code, 200)
+                    payload = map_response.json()
+                    self.assertEqual(payload["contract_version"], "trusted-insight-map-v1")
+                    self.assertEqual(len(payload["features"]), 1)
+                    self.assertEqual(payload["stats"]["current_insights"], 1)
+                    self.assertEqual(
+                        payload["features"][0]["observation_ids"],
+                        [str(observation_ids[0])],
+                    )
+
+                    # A newer failed assessment keeps the immutable L2 record,
+                    # but immediately removes its feature from the current map.
+                    stale_assessment = await TrustService(
+                        db,
+                        artifact_store=store,
+                    ).assess(
+                        observation_id=observation_ids[0],
+                        validation_run_id=None,
+                    )
+                    self.assertFalse(stale_assessment.eligible)
+                    stale_response = await client.get(
+                        "/api/v2/insights/map-features",
+                        params={"panel_version_key": str(panel_version.id)},
+                    )
+                    self.assertEqual(stale_response.status_code, 200)
+                    stale_payload = stale_response.json()
+                    self.assertEqual(stale_payload["features"], [])
+                    self.assertEqual(
+                        stale_payload["stats"]["stale_or_invalid_insights"],
+                        1,
+                    )
 
     async def test_schema_bound_extraction_creates_cited_metric(self):
         suffix = uuid.uuid4().hex
@@ -844,7 +1100,7 @@ class CollectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     insight = insight_response.json()
                     self.assertEqual(
                         insight["engine_version"],
-                        "deterministic-stored-summary-v1",
+                        "deterministic-stored-summary-v2-map",
                     )
                     self.assertEqual(
                         insight["inputs"][0]["trust_assessment_id"],

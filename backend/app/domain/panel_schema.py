@@ -15,6 +15,236 @@ class SchemaIssue:
     message: str
 
 
+GEO_SCOPE_CONTRACT_VERSION = "geo-scope-v1"
+MAP_DISPLAY_TYPES = frozenset(
+    {
+        "MARKER",
+        "HOTSPOT",
+        "RIPPLE",
+        "FLOW",
+        "COMPARISON",
+        "SHIELD_UP",
+        "ZONE",
+    }
+)
+POINT_DISPLAY_TYPES = frozenset({"MARKER", "HOTSPOT", "RIPPLE"})
+LINE_DISPLAY_TYPES = frozenset({"FLOW", "COMPARISON", "SHIELD_UP"})
+
+
+def _validate_geographic_mapping(
+    mapping: Any,
+    *,
+    properties: Mapping[str, Any],
+    required: set[str],
+) -> tuple[SchemaIssue, ...]:
+    if not isinstance(mapping, Mapping):
+        # Legacy panels use a descriptive string such as "US" or "market".
+        # It is valid panel metadata, but it is not executable map authority.
+        return ()
+    issues: list[SchemaIssue] = []
+    path = "$.x-autoprism.geographic_dimension"
+    allowed = {
+        "contract_version",
+        "display_type",
+        "label_field",
+        "latitude_field",
+        "longitude_field",
+        "end_latitude_field",
+        "end_longitude_field",
+        "polygon_field",
+    }
+    unknown = sorted(set(mapping) - allowed)
+    if unknown:
+        issues.append(
+            SchemaIssue(path, "unsupported geographic keys: " + ", ".join(unknown))
+        )
+    if mapping.get("contract_version") != GEO_SCOPE_CONTRACT_VERSION:
+        issues.append(
+            SchemaIssue(
+                f"{path}.contract_version",
+                f"must equal {GEO_SCOPE_CONTRACT_VERSION!r}",
+            )
+        )
+    display_type = mapping.get("display_type")
+    if display_type not in MAP_DISPLAY_TYPES:
+        issues.append(
+            SchemaIssue(
+                f"{path}.display_type",
+                "must be an allowlisted map display type",
+            )
+        )
+
+    fields: list[tuple[str, str, str | None]] = [
+        ("label_field", "string", None),
+    ]
+    if display_type in POINT_DISPLAY_TYPES | LINE_DISPLAY_TYPES:
+        fields.extend(
+            [
+                ("latitude_field", "number", "degree_latitude"),
+                ("longitude_field", "number", "degree_longitude"),
+            ]
+        )
+    if display_type in LINE_DISPLAY_TYPES:
+        fields.extend(
+            [
+                ("end_latitude_field", "number", "degree_latitude"),
+                ("end_longitude_field", "number", "degree_longitude"),
+            ]
+        )
+    if display_type == "ZONE":
+        fields.append(("polygon_field", "array", None))
+
+    for mapping_key, expected_type, expected_unit in fields:
+        field = mapping.get(mapping_key)
+        field_path = f"{path}.{mapping_key}"
+        if not isinstance(field, str) or not field:
+            issues.append(SchemaIssue(field_path, "must name a schema field"))
+            continue
+        definition = properties.get(field)
+        if not isinstance(definition, Mapping):
+            issues.append(
+                SchemaIssue(field_path, f"field {field!r} is absent from properties")
+            )
+            continue
+        actual_type = definition.get("type")
+        type_matches = (
+            actual_type in {"number", "integer"}
+            if expected_type == "number"
+            else actual_type == expected_type
+        )
+        if not type_matches:
+            issues.append(
+                SchemaIssue(field_path, f"field {field!r} must be {expected_type}")
+            )
+        if expected_unit is not None and definition.get("x-unit") != expected_unit:
+            issues.append(
+                SchemaIssue(
+                    field_path,
+                    f"field {field!r} must declare x-unit {expected_unit!r}",
+                )
+            )
+        if field not in required:
+            issues.append(
+                SchemaIssue(field_path, f"field {field!r} must be required")
+            )
+    return tuple(issues)
+
+
+def geographic_source_fields(schema: Mapping[str, Any]) -> tuple[str, ...]:
+    metadata = schema.get("x-autoprism")
+    mapping = metadata.get("geographic_dimension") if isinstance(metadata, Mapping) else None
+    if not isinstance(mapping, Mapping):
+        return ()
+    display_type = mapping.get("display_type")
+    keys = ["label_field"]
+    if display_type in POINT_DISPLAY_TYPES | LINE_DISPLAY_TYPES:
+        keys.extend(["latitude_field", "longitude_field"])
+    if display_type in LINE_DISPLAY_TYPES:
+        keys.extend(["end_latitude_field", "end_longitude_field"])
+    if display_type == "ZONE":
+        keys.append("polygon_field")
+    fields = [mapping.get(key) for key in keys]
+    return tuple(dict.fromkeys(field for field in fields if isinstance(field, str)))
+
+
+def _coordinate(value: Any, *, latitude: bool) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("map coordinates must be finite JSON numbers")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("map coordinates must be finite JSON numbers")
+    lower, upper = (-90.0, 90.0) if latitude else (-180.0, 180.0)
+    if parsed < lower or parsed > upper:
+        raise ValueError(
+            "latitude must be between -90 and 90"
+            if latitude
+            else "longitude must be between -180 and 180"
+        )
+    return parsed
+
+
+def build_geographic_scope(
+    schema: Mapping[str, Any],
+    data: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build a canonical, evidence-bound GeoJSON scope from frozen panel data."""
+
+    metadata = schema.get("x-autoprism")
+    mapping = metadata.get("geographic_dimension") if isinstance(metadata, Mapping) else None
+    if not isinstance(mapping, Mapping):
+        return {}
+    display_type = mapping.get("display_type")
+    label_field = mapping.get("label_field")
+    label = data.get(label_field) if isinstance(label_field, str) else None
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("geographic label must be a non-empty source string")
+
+    source_fields = {
+        key.removesuffix("_field"): mapping[key]
+        for key in (
+            "label_field",
+            "latitude_field",
+            "longitude_field",
+            "end_latitude_field",
+            "end_longitude_field",
+            "polygon_field",
+        )
+        if isinstance(mapping.get(key), str)
+    }
+    if display_type in POINT_DISPLAY_TYPES | LINE_DISPLAY_TYPES:
+        latitude = _coordinate(data.get(mapping.get("latitude_field")), latitude=True)
+        longitude = _coordinate(data.get(mapping.get("longitude_field")), latitude=False)
+        if display_type in LINE_DISPLAY_TYPES:
+            end_latitude = _coordinate(
+                data.get(mapping.get("end_latitude_field")), latitude=True
+            )
+            end_longitude = _coordinate(
+                data.get(mapping.get("end_longitude_field")), latitude=False
+            )
+            geometry: dict[str, Any] = {
+                "type": "LineString",
+                "coordinates": [
+                    [longitude, latitude],
+                    [end_longitude, end_latitude],
+                ],
+            }
+        else:
+            geometry = {
+                "type": "Point",
+                "coordinates": [longitude, latitude],
+            }
+    elif display_type == "ZONE":
+        polygon_field = mapping.get("polygon_field")
+        raw_ring = data.get(polygon_field) if isinstance(polygon_field, str) else None
+        if not isinstance(raw_ring, list) or len(raw_ring) < 4:
+            raise ValueError("map polygon must contain at least four positions")
+        ring: list[list[float]] = []
+        for position in raw_ring:
+            if not isinstance(position, (list, tuple)) or len(position) != 2:
+                raise ValueError("map polygon positions must be [longitude, latitude]")
+            ring.append(
+                [
+                    _coordinate(position[0], latitude=False),
+                    _coordinate(position[1], latitude=True),
+                ]
+            )
+        if ring[0] != ring[-1]:
+            raise ValueError("map polygon ring must be closed")
+        if len(ring) > 500:
+            raise ValueError("map polygon exceeds the 500-position limit")
+        geometry = {"type": "Polygon", "coordinates": [ring]}
+    else:
+        raise ValueError("map display type is not supported")
+
+    return {
+        "contract_version": GEO_SCOPE_CONTRACT_VERSION,
+        "display_type": display_type,
+        "label": label.strip(),
+        "geometry": geometry,
+        "source_fields": source_fields,
+    }
+
+
 def validate_panel_schema(schema: Mapping[str, Any]) -> tuple[SchemaIssue, ...]:
     if not isinstance(schema, Mapping):
         return (SchemaIssue("$", "panel schema must be an object"),)
@@ -35,6 +265,9 @@ def validate_panel_schema(schema: Mapping[str, Any]) -> tuple[SchemaIssue, ...]:
     required = schema.get("required")
     if not isinstance(required, list):
         issues.append(SchemaIssue("$.required", "required must be an array"))
+        required_fields: set[str] = set()
+    else:
+        required_fields = {item for item in required if isinstance(item, str)}
 
     metadata = schema.get("x-autoprism")
     if not isinstance(metadata, dict):
@@ -50,6 +283,14 @@ def validate_panel_schema(schema: Mapping[str, Any]) -> tuple[SchemaIssue, ...]:
                 issues.append(
                     SchemaIssue(f"$.x-autoprism.{key}", f"{key} is required")
                 )
+        if "geographic_dimension" in metadata:
+            issues.extend(
+                _validate_geographic_mapping(
+                    metadata["geographic_dimension"],
+                    properties=properties,
+                    required=required_fields,
+                )
+            )
 
     for name, definition in properties.items():
         path = f"$.properties.{name}"

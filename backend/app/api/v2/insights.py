@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.evidence import L2Insight, L2InsightInput
 from app.services.insight_service import InsightService
+from app.services.insight_map_service import InsightMapService
 
 
 router = APIRouter()
@@ -76,3 +77,15 @@ async def list_insights(
         )
     ).scalars().all()
     return [await _serialize(insight, db) for insight in insights]
+
+
+@router.get("/map-features")
+async def list_map_features(
+    panel_version_key: list[str] | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InsightMapService(db).list_current_features(
+        panel_version_keys=set(panel_version_key) if panel_version_key else None,
+        limit=limit,
+    )

@@ -33,6 +33,9 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - 证据审计 UI：原始来源、JSON Pointer、抓取时间、文件/文本哈希及原始文件下载。
 - V1 延续型情报驾驶舱：共享 design tokens、角色/视角切换、可信态势图、
   专业面板容器、全证据抽屉以及统一空/错/加载状态。
+- V1 升级型双地图：`react-globe.gl` 3D 地球与 DeckGL 2D 战术视图只读取
+  `trusted-insight-map-v1`；点、线和区域必须由冻结 Schema 字段、抽取引用、
+  当前 ELIGIBLE 评估与可重放 L2 共同证明，空库不生成装饰点。
 - 三个真实 NHTSA 汽车面板，默认展示品牌、Tesla 2024 车型和安全评级车型。
 
 ## 快速启动
@@ -106,10 +109,11 @@ docker compose exec -T \
 docker compose exec -T web alembic check
 ```
 
-2026-08-09 M6 验证记录：一次性 PostgreSQL 完整后端套件最终 39/39 通过，
-前端 typecheck、production build 与依赖审计通过；空数据库和已填充数据库迁移门禁
-均通过。当前执行环境没有可用 browser runtime，因此本轮新同尺寸截图、控制台与
-桌面/移动视觉交互冒烟尚未完成，不能沿用旧截图冒充本轮结果。
+2026-08-10 可信洞察地图验证记录：一次性 PostgreSQL 完整后端套件 44/44
+通过；迁移 `0006_v2_trusted_insight_map` 的 fresh、空库 downgrade/re-upgrade、
+真实备份副本升级与 `alembic check` 均通过。前端 typecheck、production build、
+依赖审计、Compose、1440×800 V1/V2 同尺寸截图、390×844 响应式、3D/2D 切换、
+证据/采集抽屉和控制台检查均通过；移动端无水平溢出，控制台无 warning/error。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

@@ -58,8 +58,8 @@ docker compose run --rm \
   web alembic check
 ```
 
-The 2026-08-09 final M6 gate passed 39/39 tests from a database created at zero
-migrations. Never point this command at the populated development database.
+The 2026-08-10 trusted-map gate passed 44/44 tests from a database created at
+zero migrations. Never point this command at the populated development database.
 
 ### Populated database gate
 
@@ -86,6 +86,11 @@ Never test downgrades on the development or production database. Migration
 `0005_v2_observation_lineage` deliberately rejects downgrade once immutable
 lineage/manifest history exists. Use an empty disposable database and supply
 both `DATABASE_URL` and `DATABASE_SYNC_URL` for any downgrade exercise.
+
+Migration `0006_v2_trusted_insight_map` also rejects downgrade when frozen
+geography exists. Before upgrading a populated `0005` database, verify
+`geographic_scope` is empty or stop for reviewed migration; `0006` deliberately
+refuses to infer evidence for historical non-empty scopes.
 
 ### M6 lineage audit
 
@@ -149,13 +154,12 @@ npm run build
 npm audit
 ```
 
-The M6 frontend typecheck, build and audit passed with zero reported
-vulnerabilities. The full disposable-database backend suite passed 39/39.
+The 2026-08-10 frontend typecheck, build and audit passed with zero reported
+vulnerabilities. The full disposable-database backend suite passed 44/44.
 
-Browser evidence is a separate required gate. If no browser runtime is
-available, mark current screenshots, console inspection, responsive layout and
-visual/interaction smoke as **pending**. Do not reuse an earlier screenshot or
-console record as proof for the current worktree.
+Current browser evidence is stored in `docs/visual-baselines/2026-08-10/`.
+Regenerate it after any Shell/map/CSS change; do not reuse it as proof for a
+later bundle.
 
 ## API surface
 
@@ -167,6 +171,7 @@ console record as proof for the current worktree.
 - `/api/v2/verification`: calculations, source/artifact/publisher comparisons,
   review cases/decisions, trust assessments and current eligibility.
 - `/api/v2/dashboards`: proposals, immutable versions and view payloads.
-- `/api/v2/insights`: stored-input-only L2 creation and history.
+- `/api/v2/insights`: stored-input-only L2 creation/history and current-only
+  `trusted-insight-map-v1` features at `/map-features`.
 
 OpenAPI documentation is served at `/docs`.
