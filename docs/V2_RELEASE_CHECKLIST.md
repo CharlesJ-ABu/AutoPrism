@@ -86,6 +86,22 @@ M1–M5 screenshots were not reused as current acceptance evidence.
   dashboard were unchanged after the backed-up upgrade.
 - [x] M9 frontend type/build and production dependency audit passed; desktop
   and 390×844 discovery empty-state smoke showed no horizontal overflow.
+- [x] Migrations `0010_v2_refresh_scheduler` and
+  `0011_v2_schedule_source_guard` add append-only single-head schedule
+  revisions, immutable dispatch results and same-source database references;
+  populated downgrade refuses to erase schedule history.
+- [x] Interval schedules require explicit authorization and a 15-minute minimum;
+  only the current bucket dispatches and missed intervals never create a burst.
+- [x] Scheduler uses ordinary policy-checked collection jobs, suppresses an
+  in-flight source and relies on stable idempotency keys plus row-locked worker claims.
+- [x] Final M10 suite passed 62/62 on both the prior gate and a newly migrated
+  zero-to-0011 database; fresh, empty cycle, populated refusal, backed-up real
+  upgrade and drift gates passed. Six Compose services are up.
+- [x] M10 frontend type/build/audit and desktop/390px browser smoke passed with
+  no horizontal overflow or console warning/error.
+- [x] Composer and drawer overlays retract the sidebar on desktop/mobile,
+  cover the full viewport, lock background scroll and restore navigation on
+  close without console errors.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
@@ -111,7 +127,8 @@ insight.
 - User authorization confirmation is a UI gate; immutable authorization
   attestations are pending.
 - Terms/legal review, rate scheduling and redirect-domain re-authorization are
-  manual/deferred.
+  manual/deferred. Fixed-interval execution exists, but per-domain shared rate
+  budgets, calendar windows and cron expressions are not implemented.
 - Authenticated browser collection, CAPTCHA continuation and credential vault
   are deferred product capabilities.
 - Local Google discovery requires the user to provide the API key and CX for

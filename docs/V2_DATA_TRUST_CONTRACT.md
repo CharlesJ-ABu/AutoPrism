@@ -252,7 +252,8 @@ Their historical default scores are never accepted by V2 as verified facts.
 | CAPTCHA/auth/robots restriction human-action queue | Enforced for detected gates |
 | User authorization confirmation | UI gate only; immutable authorization attestation pending |
 | Terms/legal review | Metadata/manual only; not an automated legal determination |
-| Rate limiting and scheduled refresh policy | Deferred |
+| Fixed-interval scheduled refresh policy | Implemented with explicit authorization, 15-minute floor, current-bucket-only dispatch and immutable outcomes |
+| Shared per-domain rate budgets and calendar/cron windows | Deferred |
 | Redirect-domain re-authorization | Deferred |
 | Encrypted credential vault | Deferred; repository credentials are prohibited |
 

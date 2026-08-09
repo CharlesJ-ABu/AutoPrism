@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarClock,
   DatabaseZap,
   ExternalLink,
   FilePlus2,
@@ -17,14 +18,16 @@ import {
   type CollectionJob,
   type HumanAction,
   type PanelView,
+  type ScheduleDispatch,
   type SourceDefinition,
   type SourceDiscoveryCandidate,
   type SourceDiscoveryRun,
   type SourcePool,
+  type SourceRefreshSchedule,
 } from '../../lib/v2-api';
 import { Button, Drawer, LoadingState, Status } from '../../components/ui';
 
-type OperationsTab = 'sources' | 'discovery' | 'jobs' | 'actions';
+type OperationsTab = 'sources' | 'discovery' | 'schedules' | 'jobs' | 'actions';
 
 export function OperationsDrawer({
   panels,
@@ -39,6 +42,8 @@ export function OperationsDrawer({
   const [pools, setPools] = useState<SourcePool[]>([]);
   const [sources, setSources] = useState<SourceDefinition[]>([]);
   const [discoveryRuns, setDiscoveryRuns] = useState<SourceDiscoveryRun[]>([]);
+  const [schedules, setSchedules] = useState<SourceRefreshSchedule[]>([]);
+  const [dispatches, setDispatches] = useState<ScheduleDispatch[]>([]);
   const [jobs, setJobs] = useState<CollectionJob[]>([]);
   const [actions, setActions] = useState<HumanAction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +51,7 @@ export function OperationsDrawer({
   const [error, setError] = useState('');
   const [complianceConfirmed, setComplianceConfirmed] = useState(false);
   const [discoveryConfirmed, setDiscoveryConfirmed] = useState(false);
+  const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
   const [extractionPanelId, setExtractionPanelId] = useState(panels[0]?.id ?? '');
   const [extractionResult, setExtractionResult] = useState('');
   const [poolForm, setPoolForm] = useState({ name: '', topic: '' });
@@ -63,6 +69,11 @@ export function OperationsDrawer({
     api_key: '',
     search_engine_id: '',
   });
+  const [scheduleForm, setScheduleForm] = useState({
+    source_id: '',
+    mode: 'manual' as 'manual' | 'interval',
+    interval_minutes: '1440',
+  });
 
   const sourceById = useMemo(
     () => new Map(sources.map((source) => [source.id, source])),
@@ -77,16 +88,28 @@ export function OperationsDrawer({
     setLoading(true);
     setError('');
     try {
-      const [nextPools, nextSources, nextRuns, nextJobs, nextActions] = await Promise.all([
+      const [
+        nextPools,
+        nextSources,
+        nextRuns,
+        nextSchedules,
+        nextDispatches,
+        nextJobs,
+        nextActions,
+      ] = await Promise.all([
         api.listSourcePools(),
         api.listSources(),
         api.listDiscoveryRuns(),
+        api.listRefreshSchedules(),
+        api.listScheduleDispatches(),
         api.listCollectionJobs(),
         api.listHumanActions(),
       ]);
       setPools(nextPools);
       setSources(nextSources);
       setDiscoveryRuns(nextRuns);
+      setSchedules(nextSchedules);
+      setDispatches(nextDispatches);
       setJobs(nextJobs);
       setActions(nextActions);
       setSourceForm((current) => ({
@@ -96,6 +119,10 @@ export function OperationsDrawer({
       setDiscoveryForm((current) => ({
         ...current,
         pool_id: current.pool_id || nextPools[0]?.id || '',
+      }));
+      setScheduleForm((current) => ({
+        ...current,
+        source_id: current.source_id || nextSources[0]?.id || '',
       }));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '采集工作区加载失败');
@@ -189,6 +216,26 @@ export function OperationsDrawer({
     setTab('sources');
   };
 
+  const createSchedule = async () => {
+    setBusyId('schedule');
+    setError('');
+    try {
+      await api.createRefreshSchedule(scheduleForm.source_id, {
+        mode: scheduleForm.mode,
+        ...(scheduleForm.mode === 'interval'
+          ? { interval_minutes: Number(scheduleForm.interval_minutes) }
+          : {}),
+        authorization_confirmed: scheduleForm.mode === 'interval' && scheduleConfirmed,
+      });
+      setScheduleConfirmed(false);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '刷新策略保存失败');
+    } finally {
+      setBusyId('');
+    }
+  };
+
   const collect = async (sourceId: string) => {
     setBusyId(sourceId);
     setError('');
@@ -238,6 +285,19 @@ export function OperationsDrawer({
     && (discoveryForm.query.trim() || discoveryPool?.discovery_query)
     && discoveryConfirmed,
   );
+  const scheduleMinutes = Number(scheduleForm.interval_minutes);
+  const scheduleFormValid = Boolean(
+    scheduleForm.source_id
+    && (
+      scheduleForm.mode === 'manual'
+      || (
+        Number.isInteger(scheduleMinutes)
+        && scheduleMinutes >= 15
+        && scheduleMinutes <= 44640
+        && scheduleConfirmed
+      )
+    ),
+  );
 
   return (
     <Drawer
@@ -249,6 +309,7 @@ export function OperationsDrawer({
       <nav className="drawer-tabs" aria-label="采集工作区">
         <button className={tab === 'sources' ? 'active' : ''} onClick={() => setTab('sources')}>来源与采集</button>
         <button className={tab === 'discovery' ? 'active' : ''} onClick={() => setTab('discovery')}>搜索发现 · {discoveryRuns.length}</button>
+        <button className={tab === 'schedules' ? 'active' : ''} onClick={() => setTab('schedules')}>刷新调度 · {schedules.filter((item) => item.current && item.mode === 'interval').length}</button>
         <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>任务 · {jobs.length}</button>
         <button className={tab === 'actions' ? 'active' : ''} onClick={() => setTab('actions')}>人工处理 · {actions.filter((item) => item.state === 'open').length}</button>
         <Button variant="ghost" onClick={() => void load()}><RefreshCw size={13} /> 刷新</Button>
@@ -441,6 +502,119 @@ export function OperationsDrawer({
               </div>
             ) : (
               <div className="panel-empty">尚无发现运行。系统不会伪造候选来源。</div>
+            )}
+          </section>
+        </>
+      )}
+
+      {!loading && tab === 'schedules' && (
+        <>
+          <section className="drawer-section">
+            <div className="drawer-section-title">
+              <h3>版本化刷新策略</h3>
+              <Status tone="warning"><CalendarClock size={12} /> 15 MIN MINIMUM</Status>
+            </div>
+            <p className="section-help">
+              自动调度只为已注册来源创建普通采集任务，仍会经过授权、robots、访问限制和人工处理门禁。
+              修改策略会追加新版本；不会改写旧策略或补跑错过的历史周期。
+            </p>
+            <div className="operation-forms discovery-form">
+              <label className="field">
+                <span>来源</span>
+                <select
+                  value={scheduleForm.source_id}
+                  onChange={(event) => setScheduleForm({ ...scheduleForm, source_id: event.target.value })}
+                >
+                  {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>模式</span>
+                <select
+                  value={scheduleForm.mode}
+                  onChange={(event) => {
+                    setScheduleForm({ ...scheduleForm, mode: event.target.value as 'manual' | 'interval' });
+                    setScheduleConfirmed(false);
+                  }}
+                >
+                  <option value="manual">仅人工触发</option>
+                  <option value="interval">固定间隔</option>
+                </select>
+              </label>
+              {scheduleForm.mode === 'interval' && (
+                <label className="field">
+                  <span>间隔分钟（15–44640）</span>
+                  <input
+                    type="number"
+                    min="15"
+                    max="44640"
+                    step="1"
+                    value={scheduleForm.interval_minutes}
+                    onChange={(event) => setScheduleForm({ ...scheduleForm, interval_minutes: event.target.value })}
+                  />
+                </label>
+              )}
+            </div>
+            {scheduleForm.mode === 'interval' && (
+              <label className="publish-confirmation">
+                <input
+                  type="checkbox"
+                  checked={scheduleConfirmed}
+                  onChange={(event) => setScheduleConfirmed(event.target.checked)}
+                />
+                <ShieldCheck size={15} />
+                我确认该来源允许按此频率自动访问；限制出现时必须暂停，不得绕过。
+              </label>
+            )}
+            <Button
+              disabled={!scheduleFormValid || busyId === 'schedule'}
+              onClick={() => void createSchedule()}
+            >
+              <CalendarClock size={13} /> 追加刷新策略版本
+            </Button>
+          </section>
+
+          <section className="drawer-section">
+            <h3>策略与调度历史</h3>
+            {schedules.length ? (
+              <div className="timeline-list">
+                {schedules.map((schedule) => (
+                  <article key={schedule.id}>
+                    <Status tone={schedule.current ? (schedule.mode === 'interval' ? 'ok' : 'neutral') : 'neutral'}>
+                      {schedule.current ? 'CURRENT' : 'SUPERSEDED'}
+                    </Status>
+                    <div>
+                      <strong>{sourceById.get(schedule.source_definition_id)?.name ?? schedule.source_definition_id}</strong>
+                      <span>
+                        {schedule.mode === 'interval'
+                          ? `每 ${schedule.interval_minutes} 分钟 · 已确认授权`
+                          : '仅人工触发'}
+                      </span>
+                      <small>{formatDate(schedule.created_at)} · {schedule.actor_label}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="panel-empty">尚无刷新策略；来源只接受人工触发。</div>
+            )}
+            {dispatches.length ? (
+              <div className="timeline-list schedule-dispatch-list">
+                {dispatches.map((dispatch) => (
+                  <article key={dispatch.id}>
+                    <Status tone={dispatch.outcome === 'queued' ? 'ok' : dispatch.outcome === 'failed' ? 'danger' : 'warning'}>
+                      {dispatch.outcome.toUpperCase()}
+                    </Status>
+                    <div>
+                      <strong>{sourceById.get(dispatch.source_definition_id)?.name ?? dispatch.source_definition_id}</strong>
+                      <span>{dispatch.reason_code} · 到期 {formatDate(dispatch.due_at)}</span>
+                      <small>{dispatch.collection_job_id ? `任务 ${dispatch.collection_job_id}` : '未创建采集任务'}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="panel-empty">尚无到期调度记录，系统不会伪造运行历史。</div>
             )}
           </section>
         </>

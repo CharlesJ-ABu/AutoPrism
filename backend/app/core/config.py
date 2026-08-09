@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     DATABASE_SYNC_URL: str = "postgresql://postgres:postgres@localhost:5432/autoprism"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_QUEUE_NAME: str = "autoprism:v2:collection"
+    SCHEDULER_POLL_SECONDS: int = 30
 
     AI_API_BASE: str = "https://api.openai.com/v1"
     AI_API_KEY: str = ""

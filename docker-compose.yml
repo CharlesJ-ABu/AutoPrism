@@ -55,6 +55,23 @@ services:
       - artifact_data:/data/artifacts
     command: python -m app.worker
 
+  scheduler:
+    build: ./backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/autoprism
+      - DATABASE_SYNC_URL=postgresql://postgres:postgres@postgres:5432/autoprism
+      - REDIS_URL=redis://redis:6379/0
+      - SCHEDULER_POLL_SECONDS=30
+      - V2_AUTO_CREATE_SCHEMA=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: python -m app.scheduler
+
   postgres:
     image: postgres:16-alpine
     ports:

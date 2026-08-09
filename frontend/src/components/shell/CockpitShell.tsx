@@ -42,6 +42,7 @@ export function CockpitShell({
   onRefresh,
   onManageVersions,
   onManageOperations,
+  overlayOpen = false,
   children,
 }: {
   dashboards: DashboardListItem[];
@@ -60,14 +61,15 @@ export function CockpitShell({
   onRefresh: () => void;
   onManageVersions?: () => void;
   onManageOperations?: () => void;
+  overlayOpen?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${overlayOpen ? 'overlay-open' : ''}`}>
       <div className="nebula nebula-one" />
       <div className="nebula nebula-two" />
       <div className="grid-field" />
-      <aside className="sidebar">
+      <aside className="sidebar" aria-hidden={overlayOpen || undefined}>
         <div className="brand">
           <div className="brand-mark"><Layers3 size={20} /></div>
           <div><strong>AutoPrism</strong><span>INTELLIGENCE EVIDENCE OS · V2</span></div>

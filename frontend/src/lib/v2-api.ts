@@ -105,6 +105,30 @@ export interface SourceDiscoveryRun {
   candidates: SourceDiscoveryCandidate[];
 }
 
+export interface SourceRefreshSchedule {
+  id: string;
+  source_definition_id: string;
+  mode: 'manual' | 'interval';
+  interval_minutes: number | null;
+  authorization_attested: boolean;
+  actor_label: string;
+  supersedes_id: string | null;
+  created_at: string;
+  current: boolean;
+}
+
+export interface ScheduleDispatch {
+  id: string;
+  schedule_id: string;
+  source_definition_id: string;
+  bucket_key: string;
+  due_at: string;
+  observed_at: string;
+  outcome: 'queued' | 'skipped' | 'failed';
+  reason_code: string;
+  collection_job_id: string | null;
+}
+
 export interface CollectionJob {
   id: string;
   source_definition_id: string;
@@ -590,6 +614,22 @@ export const api = {
     }),
   listDiscoveryRuns: () =>
     request<SourceDiscoveryRun[]>('/sources/discovery-runs'),
+  listRefreshSchedules: () =>
+    request<SourceRefreshSchedule[]>('/sources/refresh-schedules'),
+  createRefreshSchedule: (
+    sourceId: string,
+    payload: {
+      mode: 'manual' | 'interval';
+      interval_minutes?: number;
+      authorization_confirmed: boolean;
+    },
+  ) =>
+    request<SourceRefreshSchedule>(`/sources/${sourceId}/refresh-schedules`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listScheduleDispatches: () =>
+    request<ScheduleDispatch[]>('/sources/schedule-dispatches'),
   collectSource: (sourceId: string) =>
     request<CollectionJob>(`/sources/${sourceId}/collect`, { method: 'POST' }),
   listCollectionJobs: () => request<CollectionJob[]>('/sources/jobs'),

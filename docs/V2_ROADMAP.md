@@ -16,8 +16,9 @@ known limitations. The trusted-map follow-up and the bounded numeric M7
 milestone are complete. The safe UI DSL now includes bounded single-series
 charts and evidence-date timelines. M9 adds credential-ephemeral Google source
 discovery with immutable candidate history and a mandatory manual registration
-gate. Scheduling, additional visual types and isolated custom-component
-execution remain the next V2 work.
+gate. M10 adds append-only refresh-policy versions, immutable dispatch history
+and an independent Scheduler service. Additional visual types and isolated
+custom-component execution remain the next V2 work.
 
 ## Status at branch creation
 
@@ -72,6 +73,20 @@ compliance contract; no discovery result triggers collection automatically.
 
 Exit: discovery produces only an auditable shortlist. Registration, policy
 review and collection remain separate human-authorized steps.
+
+## M10 — Auditable refresh scheduling (complete)
+
+- Added append-only schedule revisions with one current head per source.
+- Required explicit authorization for interval mode and enforced a bounded
+  15-minute to 31-day interval.
+- Added current-bucket-only dispatching, in-flight suppression, idempotency keys
+  and immutable queued/skipped/failed outcomes.
+- Added a dedicated Compose Scheduler and a cockpit strategy/history workspace.
+- Passed migration, 62/62 backend, frontend, Compose and responsive browser gates.
+
+Exit: a registered source can be refreshed on a reviewed interval without
+rewriting policy history, duplicating an active job or bypassing collection
+compliance checks.
 
 ## Phase 2 — Extraction and verification (core complete)
 

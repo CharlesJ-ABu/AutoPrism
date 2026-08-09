@@ -23,7 +23,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background:
     radial-gradient(circle at 78% 0%, rgba(90, 50, 190, .12), transparent 35%),
     linear-gradient(145deg, #0b0b1c 0%, #111027 60%, #090918 100%);
+  transition: grid-template-columns .24s ease;
 }
+.app-shell.overlay-open { grid-template-columns: 0 minmax(0, 1fr); }
 .grid-field {
   position: fixed;
   inset: 0;
@@ -60,6 +62,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border-right: 1px solid rgba(167, 139, 250, .16);
   box-shadow: 18px 0 50px rgba(0, 0, 0, .22);
   backdrop-filter: blur(24px);
+  transition: transform .24s ease, opacity .18s ease, visibility .24s;
+}
+.app-shell.overlay-open .sidebar {
+  transform: translateX(-105%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 0 7px 24px; }
 .brand-mark {
@@ -171,6 +180,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   margin: 0 auto;
   padding: 28px 34px 64px;
 }
+.app-shell.overlay-open .workspace { z-index: 20; }
 .mission-bar {
   min-height: 54px;
   display: grid;
@@ -1001,6 +1011,7 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .timeline-list span { margin-top: 5px; color: #817b8d; font-size: 9px; line-height: 1.45; }
 .timeline-list small { margin-top: 5px; overflow-wrap: anywhere; color: #5e5969; font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .timeline-list article .secondary-button { margin-top: 9px; }
+.schedule-dispatch-list { margin-top: 14px; }
 .extraction-toolbar {
   display: grid;
   grid-template-columns: minmax(220px, .8fr) 1.2fr;
@@ -1389,6 +1400,7 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 @media (max-width: 760px) {
   .app-shell { display: block; overflow: visible; }
   .sidebar { position: relative; width: auto; height: auto; padding: 18px 16px; }
+  .app-shell.overlay-open .sidebar { display: none; }
   .brand { padding-bottom: 18px; }
   .dashboard-list { max-height: 152px; }
   .sidebar-footer { display: none; }

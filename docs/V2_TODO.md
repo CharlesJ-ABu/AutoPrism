@@ -20,7 +20,6 @@ is deliberately separate:
 
 ## V2 next
 
-- Scheduler UI and refresh-policy execution.
 - Additional discovery providers only after they implement the same ephemeral
   credential, normalized URL, immutable result and manual-registration boundary.
 - Encrypted saved search-provider credentials remain SaaS-only; local V2 asks
@@ -31,6 +30,8 @@ is deliberately separate:
 - Isolated custom React compile/preview/runtime with dependency allowlist,
   CSP, resource limits, and no ambient credentials.
 - Source-pool editing and deletion (creation/registration/collection are connected).
+- Calendar/cron schedules, maintenance windows and per-domain shared rate
+  budgets; M10 intentionally supports bounded fixed intervals only.
 - Identity-backed reviewer/reviser principals; current actor labels are
   explicitly self-asserted.
 - Evidence-bound manual-revision attestation; current revisions remain

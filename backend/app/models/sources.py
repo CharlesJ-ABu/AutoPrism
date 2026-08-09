@@ -14,12 +14,14 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -53,6 +55,17 @@ class HumanActionState(str, enum.Enum):
     OPEN = "open"
     RESOLVED = "resolved"
     DISMISSED = "dismissed"
+
+
+class RefreshScheduleMode(str, enum.Enum):
+    MANUAL = "manual"
+    INTERVAL = "interval"
+
+
+class ScheduleDispatchOutcome(str, enum.Enum):
+    QUEUED = "queued"
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 class SourcePool(Base):
@@ -206,6 +219,116 @@ class SourceDiscoveryCandidate(Base):
     )
 
 
+class SourceRefreshSchedule(Base):
+    """Append-only refresh-policy revision for one registered source."""
+
+    __tablename__ = "source_refresh_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_definition_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("source_definitions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    mode: Mapped[RefreshScheduleMode] = mapped_column(
+        Enum(RefreshScheduleMode, name="v2_refresh_schedule_mode"), nullable=False
+    )
+    interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    authorization_attested: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    actor_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    supersedes_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        unique=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "id",
+            "source_definition_id",
+            name="uq_source_refresh_schedule_id_source",
+        ),
+        ForeignKeyConstraint(
+            ["supersedes_id", "source_definition_id"],
+            [
+                "source_refresh_schedules.id",
+                "source_refresh_schedules.source_definition_id",
+            ],
+            name="fk_source_refresh_schedule_same_source",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "(mode = 'MANUAL' AND interval_seconds IS NULL) OR "
+            "(mode = 'INTERVAL' AND interval_seconds BETWEEN 900 AND 2678400 "
+            "AND authorization_attested)",
+            name="ck_source_refresh_schedule_contract",
+        ),
+        Index(
+            "uq_source_refresh_schedule_root",
+            "source_definition_id",
+            unique=True,
+            postgresql_where=text("supersedes_id IS NULL"),
+        ),
+    )
+
+
+class ScheduleDispatch(Base):
+    """Immutable result of evaluating one schedule interval bucket."""
+
+    __tablename__ = "schedule_dispatches"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    schedule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("source_refresh_schedules.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    source_definition_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("source_definitions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    bucket_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    outcome: Mapped[ScheduleDispatchOutcome] = mapped_column(
+        Enum(ScheduleDispatchOutcome, name="v2_schedule_dispatch_outcome"),
+        nullable=False,
+    )
+    reason_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    collection_job_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("collection_jobs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["schedule_id", "source_definition_id"],
+            [
+                "source_refresh_schedules.id",
+                "source_refresh_schedules.source_definition_id",
+            ],
+            name="fk_schedule_dispatch_schedule_source",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["collection_job_id", "source_definition_id"],
+            ["collection_jobs.id", "collection_jobs.source_definition_id"],
+            name="fk_schedule_dispatch_job_source",
+            ondelete="RESTRICT",
+        ),
+    )
+
+
 class CollectionJob(Base):
     __tablename__ = "collection_jobs"
 
@@ -244,6 +367,11 @@ class CollectionJob(Base):
         CheckConstraint("attempt_count >= 0", name="ck_collection_job_attempt_count"),
         CheckConstraint("max_attempts > 0", name="ck_collection_job_max_attempts"),
         Index("idx_collection_job_state_requested", "state", "requested_at"),
+        UniqueConstraint(
+            "id",
+            "source_definition_id",
+            name="uq_collection_job_id_source",
+        ),
     )
 
 
@@ -276,6 +404,11 @@ def _reject_discovery_mutation(mapper, connection, target) -> None:
     raise RuntimeError(f"{type(target).__name__} is append-only")
 
 
-for _discovery_model in (SourceDiscoveryRun, SourceDiscoveryCandidate):
-    event.listen(_discovery_model, "before_update", _reject_discovery_mutation)
-    event.listen(_discovery_model, "before_delete", _reject_discovery_mutation)
+for _append_only_model in (
+    SourceDiscoveryRun,
+    SourceDiscoveryCandidate,
+    SourceRefreshSchedule,
+    ScheduleDispatch,
+):
+    event.listen(_append_only_model, "before_update", _reject_discovery_mutation)
+    event.listen(_append_only_model, "before_delete", _reject_discovery_mutation)

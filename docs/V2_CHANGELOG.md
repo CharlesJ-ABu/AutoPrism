@@ -5,6 +5,29 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M10 — Auditable refresh scheduling (2026-08-10)
+
+- Added migrations `0010_v2_refresh_scheduler` and
+  `0011_v2_schedule_source_guard` with append-only, single-head refresh-policy
+  revisions, immutable per-interval dispatch history and database-enforced
+  same-source schedule/job/dispatch references.
+- Added a dedicated Scheduler service. Interval mode requires an explicit local
+  authorization attestation, enforces a 15-minute minimum, dispatches only the
+  current bucket and never backfills missed runs.
+- Reused the ordinary collection queue and policy checks; disabled sources and
+  in-flight jobs produce explicit skipped dispatches instead of duplicate work.
+- Hardened worker claiming with a database row lock so duplicate Redis delivery
+  cannot execute the same running/succeeded/blocked job twice.
+- Added API and cockpit schedule version/history workflows with manual mode,
+  authorization-gated interval mode and honest empty states.
+- Full-screen composer and drawer workflows now retract and deactivate the
+  cockpit sidebar, lock background scrolling and restore the shell cleanly on
+  close, preventing the navigation from covering forms.
+- Passed 62/62 backend tests twice, including a fresh zero-to-0011 database;
+  fresh/cycle/populated downgrade gates, frontend type/build,
+  zero-vulnerability audit, real backed-up migration, six-service Compose and
+  desktop/390px browser smoke passed with no console warning/error.
+
 ### M9 — Compliant source discovery (2026-08-10)
 
 - Added Google Programmable Search as the first bounded discovery provider.

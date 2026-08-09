@@ -38,6 +38,12 @@ around access controls.
 Fetches are streamed with time and byte limits. Redirects are recorded through
 the final canonical URL. Raw content is never considered executable.
 
+Fixed-interval scheduling is disabled until a user appends an authorization-
+attested schedule version. The 15-minute minimum is a floor, not permission to
+ignore a source's stricter terms or rate limits. A due interval creates an
+ordinary policy-checked job; access restrictions still stop it and enter the
+human-action queue.
+
 ## Artifact integrity
 
 Artifacts are addressed and verified by SHA-256. Database evidence stores the

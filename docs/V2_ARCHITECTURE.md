@@ -127,7 +127,10 @@ never accepts a caller-provided rate.
 ## Storage and deployment
 
 V2 local mode uses PostgreSQL for metadata, a local content-addressed
-filesystem for artifacts, and Redis plus an independent worker for jobs.
+filesystem for artifacts, Redis plus an independent worker for jobs, and a
+separate Scheduler process. Scheduler policy revisions and each evaluated
+interval bucket are append-only; the Scheduler only enqueues the same ordinary
+collection job that manual actions use, so it cannot bypass policy preflight.
 
 The SaaS branch will use S3-compatible object storage and one database per
 organization. It adds authentication, authorization, encrypted organization

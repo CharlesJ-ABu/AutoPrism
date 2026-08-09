@@ -8,7 +8,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Expected services: `frontend`, `web`, `worker`, `postgres`, and `redis`.
+Expected services: `frontend`, `web`, `worker`, `scheduler`, `postgres`, and `redis`.
 Frontend, web, PostgreSQL, and Redis expose health checks. The worker is a
 long-running queue consumer.
 
@@ -127,6 +127,12 @@ worker dequeues one ID at a time and runs:
 
 A missing credential, access block, or policy rejection does not retry around
 the restriction; it creates a human-action request.
+
+The independent Scheduler evaluates only the latest append-only policy version
+for each source. It records one immutable outcome for the current interval
+bucket, never creates catch-up bursts, and skips sources with an in-flight job.
+Inspect it with `docker compose logs scheduler`; it must remain running even
+when one tick fails.
 
 ## Backup
 

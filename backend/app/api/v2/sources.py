@@ -4,19 +4,24 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field, HttpUrl, SecretStr
-from sqlalchemy import desc, select
+from pydantic import BaseModel, Field, HttpUrl, SecretStr, model_validator
+from sqlalchemy import desc, exists, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.database import get_db
 from app.models.sources import (
     CollectionJob,
     HumanActionRequest,
+    RefreshScheduleMode,
+    ScheduleDispatch,
     SourceDefinition,
     SourceDiscoveryCandidate,
     SourceDiscoveryRun,
     SourceKind,
     SourcePool,
+    SourceRefreshSchedule,
 )
 from app.services.collection_queue import CollectionQueue, create_collection_job
 from app.services.search_discovery_service import (
@@ -62,6 +67,23 @@ class GoogleDiscoveryRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=10)
     start: int = Field(default=1, ge=1, le=91)
     safe: Literal["active", "off"] = "active"
+
+
+class RefreshScheduleCreate(BaseModel):
+    mode: Literal["manual", "interval"]
+    interval_minutes: int | None = Field(default=None, ge=15, le=44640)
+    authorization_confirmed: bool = False
+
+    @model_validator(mode="after")
+    def validate_contract(self):
+        if self.mode == "manual" and self.interval_minutes is not None:
+            raise ValueError("manual schedules cannot declare an interval")
+        if self.mode == "interval":
+            if self.interval_minutes is None:
+                raise ValueError("interval_minutes is required for interval mode")
+            if not self.authorization_confirmed:
+                raise ValueError("scheduled collection requires authorization confirmation")
+        return self
 
 
 def _pool_dict(item: SourcePool) -> dict[str, Any]:
@@ -149,6 +171,38 @@ def _discovery_run_dict(
         "requested_at": item.requested_at,
         "completed_at": item.completed_at,
         "candidates": [_candidate_dict(candidate) for candidate in candidates],
+    }
+
+
+def _schedule_dict(item: SourceRefreshSchedule, *, current: bool) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "source_definition_id": str(item.source_definition_id),
+        "mode": item.mode.value,
+        "interval_minutes": (
+            item.interval_seconds // 60 if item.interval_seconds is not None else None
+        ),
+        "authorization_attested": item.authorization_attested,
+        "actor_label": item.actor_label,
+        "supersedes_id": str(item.supersedes_id) if item.supersedes_id else None,
+        "created_at": item.created_at,
+        "current": current,
+    }
+
+
+def _dispatch_dict(item: ScheduleDispatch) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "schedule_id": str(item.schedule_id),
+        "source_definition_id": str(item.source_definition_id),
+        "bucket_key": item.bucket_key,
+        "due_at": item.due_at,
+        "observed_at": item.observed_at,
+        "outcome": item.outcome.value,
+        "reason_code": item.reason_code,
+        "collection_job_id": (
+            str(item.collection_job_id) if item.collection_job_id else None
+        ),
     }
 
 
@@ -241,6 +295,112 @@ async def list_discovery_runs(
     for candidate in candidates:
         by_run[candidate.run_id].append(candidate)
     return [_discovery_run_dict(item, by_run[item.id]) for item in runs]
+
+
+@router.get("/refresh-schedules")
+async def list_refresh_schedules(
+    source_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = select(SourceRefreshSchedule)
+    if source_id is not None:
+        statement = statement.where(
+            SourceRefreshSchedule.source_definition_id == source_id
+        )
+    schedules = list(
+        (
+            await db.execute(
+                statement.order_by(
+                    desc(SourceRefreshSchedule.created_at),
+                    desc(SourceRefreshSchedule.id),
+                ).limit(limit)
+            )
+        ).scalars()
+    )
+    child = aliased(SourceRefreshSchedule)
+    current_ids = set(
+        (
+            await db.execute(
+                select(SourceRefreshSchedule.id).where(
+                    ~exists(
+                        select(1).where(
+                            child.supersedes_id == SourceRefreshSchedule.id
+                        )
+                    )
+                )
+            )
+        ).scalars()
+    )
+    return [
+        _schedule_dict(item, current=item.id in current_ids) for item in schedules
+    ]
+
+
+@router.post("/{source_id}/refresh-schedules", status_code=201)
+async def create_refresh_schedule(
+    source_id: uuid.UUID,
+    payload: RefreshScheduleCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    source = await db.get(SourceDefinition, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="source not found")
+    child = aliased(SourceRefreshSchedule)
+    previous = (
+        await db.execute(
+            select(SourceRefreshSchedule).where(
+                SourceRefreshSchedule.source_definition_id == source_id,
+                ~exists(
+                    select(1).where(
+                        child.supersedes_id == SourceRefreshSchedule.id
+                    )
+                ),
+            )
+        )
+    ).scalar_one_or_none()
+    item = SourceRefreshSchedule(
+        source_definition_id=source_id,
+        mode=RefreshScheduleMode(payload.mode),
+        interval_seconds=(
+            payload.interval_minutes * 60
+            if payload.interval_minutes is not None
+            else None
+        ),
+        authorization_attested=payload.authorization_confirmed,
+        actor_label="local-user-self-attested",
+        supersedes_id=previous.id if previous else None,
+    )
+    db.add(item)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="refresh schedule changed concurrently; reload and retry",
+        ) from exc
+    await db.refresh(item)
+    return _schedule_dict(item, current=True)
+
+
+@router.get("/schedule-dispatches")
+async def list_schedule_dispatches(
+    source_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = select(ScheduleDispatch)
+    if source_id is not None:
+        statement = statement.where(ScheduleDispatch.source_definition_id == source_id)
+    items = (
+        await db.execute(
+            statement.order_by(
+                desc(ScheduleDispatch.observed_at), desc(ScheduleDispatch.id)
+            ).limit(limit)
+        )
+    ).scalars()
+    return [_dispatch_dict(item) for item in items]
 
 
 @router.post("/pools/{pool_id}", status_code=201)

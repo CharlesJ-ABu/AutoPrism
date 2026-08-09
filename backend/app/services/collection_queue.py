@@ -6,6 +6,7 @@ import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.models import evidence as _evidence_models  # noqa: F401
 from app.models.sources import (
     CollectionJob,
     CollectionJobState,

@@ -48,10 +48,21 @@ class CollectionService:
         )
 
     async def run_job(self, job_id: uuid.UUID) -> CollectionJob:
-        job = await self.db.get(CollectionJob, job_id)
+        job = (
+            await self.db.execute(
+                select(CollectionJob)
+                .where(CollectionJob.id == job_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
         if job is None:
             raise LookupError(f"collection job not found: {job_id}")
-        if job.state is CollectionJobState.SUCCEEDED:
+        if job.state in {
+            CollectionJobState.RUNNING,
+            CollectionJobState.SUCCEEDED,
+            CollectionJobState.BLOCKED,
+            CollectionJobState.CANCELLED,
+        }:
             return job
 
         source = await self.db.get(SourceDefinition, job.source_definition_id)

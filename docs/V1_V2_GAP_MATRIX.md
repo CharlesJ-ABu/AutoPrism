@@ -26,7 +26,7 @@ retained to show the original gap and must not be read as current M6 status.
 | Tests | V1 build and crawler gaps are documented | 23 backend tests, migration checks, frontend build, Compose and browser record dated 2026-07-25 | Historical evidence only until re-run in the current worktree |
 | Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Historical gap; dedicated Schema/UI DSL, trust, testing and release documents now exist |
 
-### Current delta through M9
+### Current delta through M10
 
 - The V1-continuity cockpit and split component system remain implemented.
 - `evidence-extraction-v3` now freezes exact ordered extraction inputs.
@@ -51,6 +51,9 @@ retained to show the original gap and must not be read as current M6 status.
 - Google source discovery now freezes credential-free normalized candidates;
   every result remains visibly unregistered until a human completes the trust
   and compliance registration form.
+- Refresh policies now have append-only current/superseded versions and
+  immutable interval outcomes; the separate Scheduler never backfills missed
+  periods or bypasses the ordinary collection policy gate.
 
 ## Non-negotiable trust findings
 
@@ -81,6 +84,7 @@ retained to show the original gap and must not be read as current M6 status.
 | M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Complete; dimensional multiply/divide and triangular FX explicitly deferred |
 | M8 Safe visual DSL | Schema-bound single-series line/bar/area charts and evidence-date timelines with truthful empty states | 55/55 backend, frontend type/build, isolated non-empty desktop/mobile smoke | Complete; multi-series/map remain explicitly unsupported |
 | M9 Compliant discovery | Ephemeral Google credentials, immutable normalized candidates and manual registration gate | `0008`/`0009`, fresh/cycle/populated gates, 59/59 backend, frontend audit/build and responsive smoke | Complete; no saved key and no automatic collection |
+| M10 Refresh scheduler | Authorization-attested interval versions, idempotent current-bucket dispatch and immutable outcomes | `0010`, fresh/cycle/populated gates, 62/62 backend, six-service Compose and responsive smoke | Complete for fixed intervals; cron/shared domain budgets deferred |
 
 ## Feature acceptance ledger
 
@@ -98,6 +102,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
 | Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
 | Search discovery | request-only Google provider plus immutable normalized candidates | explicit authorization and manual registration handoff | done | done for first provider; candidates are never auto-collected |
+| Scheduled refresh | append-only policy heads and current-bucket dispatcher | strategy/history UI with explicit authorization | done | done for bounded fixed intervals |
 | Evidence viewing | all fragments plus INFO provenance | connected cockpit drawer | done | done |
 | Revision history | append-only with DB fork prevention | view and create replacement | done | done |
 | Cross-source validation | explicit tolerances plus independent source/artifact/frozen-publisher rule | view and run | done | done |
@@ -188,8 +193,9 @@ has a real path with missing required behavior; **missing** has no usable path;
   zero open human actions. All 3 collection buttons were disabled before the
   compliance acknowledgement and enabled only after it. No test collection was
   added to the real database.
-- Local file upload, authenticated browser collection, CAPTCHA continuation,
-  scheduler execution and encrypted credential storage remain explicit TODOs.
+- Local file upload, authenticated browser collection, CAPTCHA continuation and
+  encrypted credential storage remain explicit TODOs. Fixed-interval scheduler
+  execution was completed in M10; cron and shared domain budgets remain deferred.
 
 ## M4 verification record
 

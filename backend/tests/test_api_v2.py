@@ -355,6 +355,66 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await db.commit()
             await db.rollback()
 
+    async def test_refresh_schedule_versions_require_explicit_authorization(self):
+        suffix = uuid.uuid4().hex
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            pool_response = await client.post(
+                "/api/v2/sources/pools",
+                json={
+                    "key": f"schedule-api-{suffix}",
+                    "name": "Schedule API pool",
+                    "topic": "official updates",
+                },
+            )
+            self.assertEqual(pool_response.status_code, 201, pool_response.text)
+            source_response = await client.post(
+                f"/api/v2/sources/pools/{pool_response.json()['id']}",
+                json={
+                    "key": f"schedule-source-{suffix}",
+                    "name": "Scheduled source",
+                    "canonical_url": "https://example.test/data.json",
+                    "kind": "api",
+                    "global_reputation": 1,
+                    "topic_authority": 1,
+                },
+            )
+            self.assertEqual(source_response.status_code, 201, source_response.text)
+            source_id = source_response.json()["id"]
+
+            manual = await client.post(
+                f"/api/v2/sources/{source_id}/refresh-schedules",
+                json={"mode": "manual", "authorization_confirmed": False},
+            )
+            self.assertEqual(manual.status_code, 201, manual.text)
+            rejected = await client.post(
+                f"/api/v2/sources/{source_id}/refresh-schedules",
+                json={"mode": "interval", "interval_minutes": 60},
+            )
+            self.assertEqual(rejected.status_code, 422, rejected.text)
+            interval = await client.post(
+                f"/api/v2/sources/{source_id}/refresh-schedules",
+                json={
+                    "mode": "interval",
+                    "interval_minutes": 60,
+                    "authorization_confirmed": True,
+                },
+            )
+            self.assertEqual(interval.status_code, 201, interval.text)
+            self.assertEqual(interval.json()["supersedes_id"], manual.json()["id"])
+
+            history = await client.get(
+                f"/api/v2/sources/refresh-schedules?source_id={source_id}"
+            )
+            self.assertEqual(history.status_code, 200, history.text)
+            self.assertEqual(len(history.json()), 2)
+            current = [item for item in history.json() if item["current"]]
+            self.assertEqual(len(current), 1)
+            self.assertEqual(current[0]["id"], interval.json()["id"])
+
     async def test_source_and_versioned_dashboard_contracts(self):
         suffix = uuid.uuid4().hex
         transport = httpx.ASGITransport(app=app)

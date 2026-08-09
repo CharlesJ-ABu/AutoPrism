@@ -20,6 +20,8 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - 内容寻址原始文件存储（SHA-256）和不可变来源快照。
 - HTML、RSS、PDF、CSV、XLSX、JSON API 解析及可重现定位器。
 - Redis 采集队列与独立 Worker。
+- 独立 Scheduler、追加式刷新策略版本、固定周期幂等调度与不可变运行历史；
+  自动模式必须单独确认授权，且仍经过普通采集合规门禁。
 - 来源池、可信度、主题权威度、抓取策略和人工处理队列。
 - Google Programmable Search 合规发现工作台：API key/CX 仅用于单次请求，
   结果进入不可变候选历史，但不会自动注册或采集。
@@ -135,6 +137,11 @@ docker compose exec -T web alembic check
 真实备份副本上通过；真实 6 条观测及摘要、1 个主面板均未变化。一次性
 PostgreSQL 完整套件 59/59、前端 typecheck/build 与生产依赖审计通过；发现
 候选保持未注册，API key 与原始 CX 不进入数据库。
+
+同日 M10 验证记录：迁移 `0010_v2_refresh_scheduler` /
+`0011_v2_schedule_source_guard` 的 fresh、空库循环、已有历史降级拒绝和真实备份
+升级通过；62/62 后端测试、前端构建/审计、六服务 Compose 与桌面/390px 浏览器
+验收通过。真实 6 条观测摘要和 1 个主面板未变化。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

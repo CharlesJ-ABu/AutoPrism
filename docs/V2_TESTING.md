@@ -122,9 +122,43 @@ comes from the full disposable-PostgreSQL run, not the skipped fast run.
   discovery workspace, explicit authorization/ephemeral-credential copy,
   disabled incomplete form, immutable empty state and no horizontal overflow.
 
+## M10 refresh scheduler gate — 2026-08-10
+
+- Fresh database `autoprism_v2_m10_release_20260810` upgraded from zero to
+  `0011_v2_schedule_source_guard`; `alembic check` reported no drift.
+- An empty database completed zero-to-0010, upgrade to 0011, downgrade to 0010
+  and re-upgrade to 0011. A populated M10 database refused downgrade rather
+  than erase schedule/dispatch history.
+- The complete disposable-PostgreSQL suite passed 62/62 on both the existing
+  gate and the newly migrated release database, including schedule
+  authorization/version chains, current-bucket-only dispatch, idempotency,
+  same-source database references, append-only database guards and
+  duplicate-delivery-safe worker claims.
+- Readable `/tmp/autoprism_pre_m10_20260810.dump` and
+  `/tmp/autoprism_pre_m10_0011_20260810.dump` backups were verified before the
+  real upgrades. The real database advanced to
+  `0011_v2_schedule_source_guard`; observation-ID digest
+  `d89b6eed0d4287ec35520cbd16386ce5`, 6 observations and 1 dashboard were
+  unchanged, and the schedule/dispatch tables remained empty.
+- Frontend typecheck/build passed (2,889 modules; main JS 250.94 kB, gzip
+  75.11 kB); production dependency audit reported zero known vulnerabilities.
+- Six-service Compose started the independent Scheduler without errors. Current
+  desktop and 390×844 browser smoke verified the schedule workspace, disabled
+  pre-authorization submit, honest empty history, no horizontal overflow and no
+  console warning/error. A follow-up overlay regression verified that the
+  composer and operations drawer retract the sidebar, cover the full 1280px
+  viewport, lock background scroll, fit within 390×844 without horizontal
+  overflow, and restore the navigation and scrolling after close.
+
 ## Database migrations
 
-Current revision: `0009_v2_discovery_cardinality`.
+Current revision: `0011_v2_schedule_source_guard`.
+
+M10 adds only append-only schedule versions, immutable dispatch outcomes and
+same-source reference constraints. It does not create a schedule for historical
+sources or trigger a collection during migration. Populated 0010 downgrade
+fails closed; the constraint-only 0011 migration supports empty
+downgrade/re-upgrade.
 
 The M9 migrations add only immutable discovery metadata, normalized
 unregistered candidates and a deferred frozen-cardinality check. They do not

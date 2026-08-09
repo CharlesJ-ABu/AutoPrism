@@ -45,6 +45,18 @@ function App() {
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const mapLoadGeneration = useRef(0);
+  const overlayOpen = Boolean(
+    selectedPanel || composerOpen || versionManagerOpen || operationsOpen,
+  );
+
+  useEffect(() => {
+    if (!overlayOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [overlayOpen]);
 
   const loadMapFeatures = async (panels: PanelView[]) => {
     const generation = mapLoadGeneration.current + 1;
@@ -162,7 +174,12 @@ function App() {
       query={query}
       onQueryChange={setQuery}
       onDashboardSelect={(item) => void selectDashboard(item)}
-      onCreate={() => setComposerOpen(true)}
+      onCreate={() => {
+        setSelectedPanel(undefined);
+        setVersionManagerOpen(false);
+        setOperationsOpen(false);
+        setComposerOpen(true);
+      }}
       perspective={perspective}
       onPerspectiveChange={setPerspective}
       title={view?.dashboard.title ?? '选择可信情报主面板'}
@@ -170,8 +187,19 @@ function App() {
       version={view?.version.version}
       loading={loading}
       onRefresh={() => void loadDashboards(selectedId)}
-      onManageVersions={view ? () => setVersionManagerOpen(true) : undefined}
-      onManageOperations={() => setOperationsOpen(true)}
+      onManageVersions={view ? () => {
+        setSelectedPanel(undefined);
+        setComposerOpen(false);
+        setOperationsOpen(false);
+        setVersionManagerOpen(true);
+      } : undefined}
+      onManageOperations={() => {
+        setSelectedPanel(undefined);
+        setComposerOpen(false);
+        setVersionManagerOpen(false);
+        setOperationsOpen(true);
+      }}
+      overlayOpen={overlayOpen}
     >
       {error && <ErrorState message={error} onRetry={() => void loadDashboards(selectedId)} />}
       {loading && !view && <LoadingState />}
