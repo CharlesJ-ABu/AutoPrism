@@ -15,6 +15,10 @@ documented localhost frontend origins.
 - `.env.example` contains placeholders only.
 - API keys supplied through the dashboard composer are sent only to the local
   backend for that proposal request and are not persisted in dashboard models.
+- Google discovery API keys and raw search-engine IDs are request-only. The key
+  is excluded entirely; discovery history stores only a one-way configuration
+  hash, query and normalized candidates. Queries are immutable audit data and
+  must not contain secrets.
 - Never put secrets in source definitions, parser configuration, prompts,
   model settings, logs, screenshots or review cases.
 - V2 credential references are identifiers only; the encrypted credential

@@ -78,6 +78,33 @@ export interface SourceDefinition {
   created_at: string;
 }
 
+export interface SourceDiscoveryCandidate {
+  id: string;
+  ordinal: number;
+  title: string;
+  url: string;
+  url_sha256: string;
+  display_host: string;
+  snippet: string;
+  mime_type: string | null;
+  suggested_kind: 'html' | 'pdf' | 'csv' | 'xlsx' | 'rss';
+  created_at: string;
+}
+
+export interface SourceDiscoveryRun {
+  id: string;
+  pool_id: string;
+  provider: 'google-programmable-search-v1';
+  query: string;
+  provider_config_hash: string;
+  result_count: number;
+  result_hash: string;
+  integrity_valid: boolean;
+  requested_at: string;
+  completed_at: string;
+  candidates: SourceDiscoveryCandidate[];
+}
+
 export interface CollectionJob {
   id: string;
   source_definition_id: string;
@@ -547,6 +574,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  discoverSources: (
+    poolId: string,
+    payload: {
+      api_key: string;
+      search_engine_id: string;
+      query?: string;
+      limit?: number;
+      safe?: 'active' | 'off';
+    },
+  ) =>
+    request<SourceDiscoveryRun>(`/sources/pools/${poolId}/discover`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listDiscoveryRuns: () =>
+    request<SourceDiscoveryRun[]>('/sources/discovery-runs'),
   collectSource: (sourceId: string) =>
     request<CollectionJob>(`/sources/${sourceId}/collect`, { method: 'POST' }),
   listCollectionJobs: () => request<CollectionJob[]>('/sources/jobs'),

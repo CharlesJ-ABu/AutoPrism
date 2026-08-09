@@ -7,21 +7,24 @@ import {
   LockKeyhole,
   Play,
   RefreshCw,
+  Search,
   ShieldCheck,
 } from 'lucide-react';
 
-import { formatDate, safeHostname, slugify } from '../../lib/format';
+import { formatDate, safeHostname, shortHash, slugify } from '../../lib/format';
 import {
   api,
   type CollectionJob,
   type HumanAction,
   type PanelView,
   type SourceDefinition,
+  type SourceDiscoveryCandidate,
+  type SourceDiscoveryRun,
   type SourcePool,
 } from '../../lib/v2-api';
 import { Button, Drawer, LoadingState, Status } from '../../components/ui';
 
-type OperationsTab = 'sources' | 'jobs' | 'actions';
+type OperationsTab = 'sources' | 'discovery' | 'jobs' | 'actions';
 
 export function OperationsDrawer({
   panels,
@@ -35,12 +38,14 @@ export function OperationsDrawer({
   const [tab, setTab] = useState<OperationsTab>('sources');
   const [pools, setPools] = useState<SourcePool[]>([]);
   const [sources, setSources] = useState<SourceDefinition[]>([]);
+  const [discoveryRuns, setDiscoveryRuns] = useState<SourceDiscoveryRun[]>([]);
   const [jobs, setJobs] = useState<CollectionJob[]>([]);
   const [actions, setActions] = useState<HumanAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
   const [complianceConfirmed, setComplianceConfirmed] = useState(false);
+  const [discoveryConfirmed, setDiscoveryConfirmed] = useState(false);
   const [extractionPanelId, setExtractionPanelId] = useState(panels[0]?.id ?? '');
   const [extractionResult, setExtractionResult] = useState('');
   const [poolForm, setPoolForm] = useState({ name: '', topic: '' });
@@ -52,27 +57,43 @@ export function OperationsDrawer({
     global_reputation: '',
     topic_authority: '',
   });
+  const [discoveryForm, setDiscoveryForm] = useState({
+    pool_id: '',
+    query: '',
+    api_key: '',
+    search_engine_id: '',
+  });
 
   const sourceById = useMemo(
     () => new Map(sources.map((source) => [source.id, source])),
     [sources],
+  );
+  const discoveryPool = useMemo(
+    () => pools.find((pool) => pool.id === discoveryForm.pool_id),
+    [discoveryForm.pool_id, pools],
   );
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const [nextPools, nextSources, nextJobs, nextActions] = await Promise.all([
+      const [nextPools, nextSources, nextRuns, nextJobs, nextActions] = await Promise.all([
         api.listSourcePools(),
         api.listSources(),
+        api.listDiscoveryRuns(),
         api.listCollectionJobs(),
         api.listHumanActions(),
       ]);
       setPools(nextPools);
       setSources(nextSources);
+      setDiscoveryRuns(nextRuns);
       setJobs(nextJobs);
       setActions(nextActions);
       setSourceForm((current) => ({
+        ...current,
+        pool_id: current.pool_id || nextPools[0]?.id || '',
+      }));
+      setDiscoveryForm((current) => ({
         ...current,
         pool_id: current.pool_id || nextPools[0]?.id || '',
       }));
@@ -133,6 +154,41 @@ export function OperationsDrawer({
     }
   };
 
+  const discover = async () => {
+    setBusyId('discovery');
+    setError('');
+    try {
+      await api.discoverSources(discoveryForm.pool_id, {
+        api_key: discoveryForm.api_key,
+        search_engine_id: discoveryForm.search_engine_id,
+        ...(discoveryForm.query.trim() ? { query: discoveryForm.query.trim() } : {}),
+        limit: 10,
+        safe: 'active',
+      });
+      setDiscoveryForm((current) => ({ ...current, api_key: '' }));
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '搜索发现失败');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const useCandidate = (
+    run: SourceDiscoveryRun,
+    candidate: SourceDiscoveryCandidate,
+  ) => {
+    setSourceForm({
+      pool_id: run.pool_id,
+      name: candidate.title,
+      canonical_url: candidate.url,
+      kind: candidate.suggested_kind,
+      global_reputation: '',
+      topic_authority: '',
+    });
+    setTab('sources');
+  };
+
   const collect = async (sourceId: string) => {
     setBusyId(sourceId);
     setError('');
@@ -175,6 +231,13 @@ export function OperationsDrawer({
     && sourceForm.global_reputation !== ''
     && sourceForm.topic_authority !== '',
   );
+  const discoveryFormValid = Boolean(
+    discoveryForm.pool_id
+    && discoveryForm.api_key
+    && discoveryForm.search_engine_id
+    && (discoveryForm.query.trim() || discoveryPool?.discovery_query)
+    && discoveryConfirmed,
+  );
 
   return (
     <Drawer
@@ -185,6 +248,7 @@ export function OperationsDrawer({
     >
       <nav className="drawer-tabs" aria-label="采集工作区">
         <button className={tab === 'sources' ? 'active' : ''} onClick={() => setTab('sources')}>来源与采集</button>
+        <button className={tab === 'discovery' ? 'active' : ''} onClick={() => setTab('discovery')}>搜索发现 · {discoveryRuns.length}</button>
         <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>任务 · {jobs.length}</button>
         <button className={tab === 'actions' ? 'active' : ''} onClick={() => setTab('actions')}>人工处理 · {actions.filter((item) => item.state === 'open').length}</button>
         <Button variant="ghost" onClick={() => void load()}><RefreshCw size={13} /> 刷新</Button>
@@ -257,6 +321,127 @@ export function OperationsDrawer({
               </div>
               <Button disabled={!sourceFormValid || busyId === 'source'} onClick={() => void createSource()}><FilePlus2 size={13} /> 注册来源</Button>
             </div>
+          </section>
+        </>
+      )}
+
+      {!loading && tab === 'discovery' && (
+        <>
+          <section className="drawer-section">
+            <div className="drawer-section-title">
+              <h3>Google Programmable Search</h3>
+              <Status tone="warning"><LockKeyhole size={12} /> EPHEMERAL CREDENTIAL</Status>
+            </div>
+            <p className="section-help">
+              API key 仅用于这一次服务器内存请求，不写入来源池、发现历史、日志或仓库。
+              搜索结果只是未注册候选，不代表来源已获授权、符合 robots/条款或具备可信度。
+              搜索词会进入不可变审计历史，请勿在其中填写凭证或其他秘密。
+            </p>
+            <div className="operation-forms discovery-form">
+              <label className="field">
+                <span>来源池</span>
+                <select
+                  value={discoveryForm.pool_id}
+                  onChange={(event) => setDiscoveryForm({ ...discoveryForm, pool_id: event.target.value })}
+                >
+                  {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>搜索词（留空使用来源池冻结查询）</span>
+                <input
+                  value={discoveryForm.query}
+                  placeholder={discoveryPool?.discovery_query ?? '该来源池尚未设置默认查询'}
+                  onChange={(event) => setDiscoveryForm({ ...discoveryForm, query: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Search Engine ID（CX）</span>
+                <input
+                  value={discoveryForm.search_engine_id}
+                  autoComplete="off"
+                  onChange={(event) => setDiscoveryForm({ ...discoveryForm, search_engine_id: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Google API key（提交成功后清空）</span>
+                <input
+                  type="password"
+                  value={discoveryForm.api_key}
+                  autoComplete="new-password"
+                  onChange={(event) => setDiscoveryForm({ ...discoveryForm, api_key: event.target.value })}
+                />
+              </label>
+            </div>
+            <label className="publish-confirmation">
+              <input
+                type="checkbox"
+                checked={discoveryConfirmed}
+                onChange={(event) => setDiscoveryConfirmed(event.target.checked)}
+              />
+              <ShieldCheck size={15} />
+              我确认有权使用该搜索配置，并接受 Google 的配额、条款与 SafeSearch 请求。
+            </label>
+            <Button
+              disabled={!discoveryFormValid || busyId === 'discovery'}
+              onClick={() => void discover()}
+            >
+              <Search size={13} /> 发现候选来源
+            </Button>
+          </section>
+
+          <section className="drawer-section">
+            <h3>不可变发现历史</h3>
+            <p className="section-help">
+              仅冻结查询、结果及搜索配置哈希；API key 与原始 CX 不被保存。
+              “带入注册表单”仍需人工补充声誉、主题权威和合规信息。
+            </p>
+            {discoveryRuns.length ? (
+              <div className="discovery-run-list">
+                {discoveryRuns.map((run) => (
+                  <article className="discovery-run" key={run.id}>
+                    <header>
+                      <div>
+                        <span className="panel-key">{run.provider}</span>
+                        <h4>{run.query}</h4>
+                      </div>
+                      <div className="discovery-run-meta">
+                        <Status tone={run.integrity_valid ? 'ok' : 'danger'}>
+                          {run.integrity_valid ? 'HASH VERIFIED' : 'INTEGRITY ERROR'}
+                        </Status>
+                        <Status tone="neutral">{run.result_count} CANDIDATES</Status>
+                        <small>{formatDate(run.completed_at)} · {shortHash(run.result_hash)}</small>
+                      </div>
+                    </header>
+                    {run.candidates.length ? (
+                      <div className="source-list">
+                        {run.candidates.map((candidate) => (
+                          <article className="source-item discovery-candidate" key={candidate.id}>
+                            <div>
+                              <span className="panel-key">
+                                UNREGISTERED · {candidate.suggested_kind} · {candidate.display_host}
+                              </span>
+                              <h4>{candidate.title}</h4>
+                              <p>{candidate.snippet || '搜索服务未返回摘要；系统不会补写。'}</p>
+                            </div>
+                            <div className="version-actions">
+                              <a className="ghost-button" href={candidate.url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> 查看</a>
+                              <Button variant="secondary" onClick={() => useCandidate(run, candidate)}><FilePlus2 size={13} /> 带入注册表单</Button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="panel-empty">
+                        本次搜索没有返回可安全保存的候选；系统不会补写或伪造结果。
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="panel-empty">尚无发现运行。系统不会伪造候选来源。</div>
+            )}
           </section>
         </>
       )}

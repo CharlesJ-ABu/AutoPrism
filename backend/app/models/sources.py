@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -116,6 +117,95 @@ class SourceDefinition(Base):
     )
 
 
+class SourceDiscoveryRun(Base):
+    """Immutable metadata for one user-authorized discovery request."""
+
+    __tablename__ = "source_discovery_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    pool_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("source_pools.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    result_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "provider = 'google-programmable-search-v1'",
+            name="ck_source_discovery_provider",
+        ),
+        CheckConstraint(
+            "result_count >= 0 AND result_count <= 10",
+            name="ck_source_discovery_result_count",
+        ),
+        CheckConstraint(
+            "provider_config_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_source_discovery_provider_hash",
+        ),
+        CheckConstraint(
+            "result_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_source_discovery_result_hash",
+        ),
+    )
+
+
+class SourceDiscoveryCandidate(Base):
+    """Immutable, unregistered candidate returned by a discovery provider."""
+
+    __tablename__ = "source_discovery_candidates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("source_discovery_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    url_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_host: Mapped[str] = mapped_column(String(500), nullable=False)
+    snippet: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    suggested_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_source_discovery_candidate_ordinal"),
+        CheckConstraint(
+            "suggested_kind IN ('html', 'pdf', 'csv', 'xlsx', 'rss')",
+            name="ck_source_discovery_candidate_kind",
+        ),
+        CheckConstraint(
+            "url_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_source_discovery_candidate_url_hash",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "ordinal",
+            name="uq_source_discovery_candidate_ordinal",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "url_sha256",
+            name="uq_source_discovery_candidate_url",
+        ),
+    )
+
+
 class CollectionJob(Base):
     __tablename__ = "collection_jobs"
 
@@ -180,3 +270,12 @@ class HumanActionRequest(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+def _reject_discovery_mutation(mapper, connection, target) -> None:
+    raise RuntimeError(f"{type(target).__name__} is append-only")
+
+
+for _discovery_model in (SourceDiscoveryRun, SourceDiscoveryCandidate):
+    event.listen(_discovery_model, "before_update", _reject_discovery_mutation)
+    event.listen(_discovery_model, "before_delete", _reject_discovery_mutation)

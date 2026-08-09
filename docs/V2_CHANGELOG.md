@@ -5,6 +5,25 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M9 — Compliant source discovery (2026-08-10)
+
+- Added Google Programmable Search as the first bounded discovery provider.
+  The API key and raw search-engine ID are request-only; only a one-way
+  configuration hash, query and normalized results enter immutable history.
+- Added append-only discovery runs and candidate tables under migrations
+  `0008_v2_source_discovery` and `0009_v2_discovery_cardinality`, including
+  database guards against update, delete, truncate and late candidate inserts.
+  Populated downgrade fails instead of erasing discovery history.
+- Normalized candidates to credential-free HTTP(S) URLs, rejected user-info
+  and credential-like query parameters, de-duplicated results, and treated file
+  type as an untrusted registration suggestion.
+- Added a cockpit discovery workspace with explicit authorization, password
+  input, honest zero-result states and a manual “bring to registration form”
+  action. Discovery never auto-registers or auto-collects a source.
+- Passed 59/59 tests on disposable PostgreSQL, fresh/cycle/populated migration
+  gates, frontend type/build, zero-vulnerability production dependency audit,
+  Compose smoke and 390×844 responsive inspection.
+
 ### M8 — Safe chart and timeline UI DSL (2026-08-10)
 
 - Expanded the non-executable UI DSL with Schema-bound line/bar/area charts and

@@ -97,9 +97,39 @@ The fast non-database command remains useful during development; database tests
 are explicitly gated by `AUTOPRISM_RUN_DB_TESTS=1`. The 39/39 release evidence
 comes from the full disposable-PostgreSQL run, not the skipped fast run.
 
+## M9 compliant discovery gate — 2026-08-10
+
+- Disposable databases upgraded from zero through `0008_v2_source_discovery`
+  and `0009_v2_discovery_cardinality`; `alembic check` passed.
+- A second empty database completed zero-to-head, downgrade to `0007` and
+  re-upgrade through `0009`. Downgrade on populated M9 history stopped with the
+  documented refusal instead of deleting discovery history.
+- The complete backend suite passed 59/59, including credential exclusion,
+  URL normalization, sanitized provider failures and database UPDATE/TRUNCATE
+  rejection for discovery history.
+- A readable pre-M9 backup was restored to a separate database before the real
+  upgrade. Both the clone and real database retained 6 observations with digest
+  `570aa8534787f6431a0bdef4fd8d9588` and 1 dashboard; discovery tables began
+  empty and no historical facts were backfilled.
+- Before the follow-up `0008` → `0009` upgrade, a second readable backup was
+  created. The observation-ID digest remained
+  `d89b6eed0d4287ec35520cbd16386ce5`, with 6 observations, 1 dashboard and zero
+  discovery rows before and after; all Compose services returned healthy.
+- Frontend typecheck and production build passed (2,889 modules; main JS
+  246.07 kB, gzip 73.99 kB). Production dependency audit reported zero known
+  vulnerabilities across 210 packages.
+- Rebuilt Compose desktop and 390×844 browser smoke confirmed the live
+  discovery workspace, explicit authorization/ephemeral-credential copy,
+  disabled incomplete form, immutable empty state and no horizontal overflow.
+
 ## Database migrations
 
-Current revision: `0007_v2_numeric_conversion`.
+Current revision: `0009_v2_discovery_cardinality`.
+
+The M9 migrations add only immutable discovery metadata, normalized
+unregistered candidates and a deferred frozen-cardinality check. They do not
+create a source, start a collection job or persist an API key/raw CX. Populated
+M9 downgrade fails closed; empty disposable downgrade/re-upgrade is supported.
 
 The M7 migration adds only new immutable numeric/uncertainty, normalized
 calculation-input and conversion histories plus the Trust foreign key. It

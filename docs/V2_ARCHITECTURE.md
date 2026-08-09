@@ -26,6 +26,13 @@ The V2 implementation order is:
 Browser automation and authenticated Playwright collection are explicitly
 deferred. Current collectors target HTML, PDF, CSV/Excel, RSS, and JSON APIs.
 
+Source discovery is intentionally separate from acquisition. A Google
+Programmable Search request accepts an ephemeral API key and search-engine ID,
+then freezes only a configuration hash and normalized, credential-free HTTP(S)
+candidates. A candidate is not a `SourceDefinition`: a human must still review
+authorization, terms, robots, reputation and topic authority before registration
+and must separately authorize collection.
+
 ## Data levels
 
 - **L1**: immutable acquired source material and its capture metadata.

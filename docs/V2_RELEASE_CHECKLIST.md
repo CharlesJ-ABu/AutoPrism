@@ -6,8 +6,9 @@ target.
 
 Current state on 2026-08-10: M6 lineage and its visual closeout pass. The
 evidence-bound dual-map follow-up and M7 bounded numeric/conversion milestone
-pass backend, migration, frontend, Compose and browser gates. Historical M1–M5
-screenshots were not reused as current acceptance evidence.
+pass backend, migration, frontend, Compose and browser gates. M8 safe charts/
+timelines and M9 compliant discovery also pass their scoped gates. Historical
+M1–M5 screenshots were not reused as current acceptance evidence.
 
 ## Required gates
 
@@ -74,6 +75,17 @@ screenshots were not reused as current acceptance evidence.
 - [x] Non-empty chart/timeline rendering passed desktop and 390×844 browser
   smoke using only the isolated integration database. Compose was restored to
   the real one-dashboard database after the check.
+- [x] Migrations `0008_v2_source_discovery` and
+  `0009_v2_discovery_cardinality` add immutable credential-free discovery
+  runs/candidates and freeze candidate cardinality; populated downgrade refuses
+  to erase history.
+- [x] Google discovery keeps the API key and raw CX out of persistence, rejects
+  credential-bearing result URLs and never auto-registers or auto-collects.
+- [x] Final M9 suite passed 59/59 on disposable PostgreSQL; fresh, empty cycle,
+  populated-copy and drift gates passed. The real observation digest and single
+  dashboard were unchanged after the backed-up upgrade.
+- [x] M9 frontend type/build and production dependency audit passed; desktop
+  and 390×844 discovery empty-state smoke showed no horizontal overflow.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
@@ -102,6 +114,8 @@ insight.
   manual/deferred.
 - Authenticated browser collection, CAPTCHA continuation and credential vault
   are deferred product capabilities.
+- Local Google discovery requires the user to provide the API key and CX for
+  every request. Saved/encrypted provider credentials are not implemented.
 - Three historical observations remain intentionally unresolved; pre-v3
   extraction runs cannot be retroactively promoted by attaching a new manifest.
 - Dimensional multiply/divide, compound units, triangular FX and derived

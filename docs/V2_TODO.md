@@ -20,8 +20,11 @@ is deliberately separate:
 
 ## V2 next
 
-- Google programmable search discovery with user-supplied configuration.
 - Scheduler UI and refresh-policy execution.
+- Additional discovery providers only after they implement the same ephemeral
+  credential, normalized URL, immutable result and manual-registration boundary.
+- Encrypted saved search-provider credentials remain SaaS-only; local V2 asks
+  for the Google API key and CX on each discovery request.
 - Expand safe UI DSL beyond the implemented metric/table/single-series-chart/
   timeline/provenance subset to map, heatmap, radar, ticker, network and
   evidence-safe multi-series components.

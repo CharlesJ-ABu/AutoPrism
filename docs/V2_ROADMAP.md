@@ -14,8 +14,10 @@ eligibility and stored-input-only deterministic L2. See
 [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
 known limitations. The trusted-map follow-up and the bounded numeric M7
 milestone are complete. The safe UI DSL now includes bounded single-series
-charts and evidence-date timelines; discovery, scheduling, additional visual
-types and isolated custom-component execution remain the next V2 work.
+charts and evidence-date timelines. M9 adds credential-ephemeral Google source
+discovery with immutable candidate history and a mandatory manual registration
+gate. Scheduling, additional visual types and isolated custom-component
+execution remain the next V2 work.
 
 ## Status at branch creation
 
@@ -51,7 +53,25 @@ Exit: the append-only evidence chain has migration and integration tests.
 Exit: a source can be discovered, captured, hashed, parsed, and reproduced
 without an LLM inventing source material.
 
-Google discovery remains pending; direct registered sources are operational.
+Google discovery and direct registered sources are operational. Discovery
+candidates remain unregistered until a human supplies the source trust and
+compliance contract; no discovery result triggers collection automatically.
+
+## M9 — Compliant source discovery (complete)
+
+- Added request-only Google Programmable Search credentials and bounded result
+  paging (one to ten candidates per run).
+- Froze credential-free discovery runs and normalized candidate results under
+  migrations `0008_v2_source_discovery` and
+  `0009_v2_discovery_cardinality`; candidate sets cannot be appended later.
+- Rejected unsafe/credential-bearing result URLs and sanitized upstream errors.
+- Added explicit authorization, zero-result and manual-registration states in
+  the operations drawer.
+- Passed fresh, empty cycle and populated-copy migration gates, 59/59 backend
+  tests, frontend static/dependency gates and desktop/mobile browser smoke.
+
+Exit: discovery produces only an auditable shortlist. Registration, policy
+review and collection remain separate human-authorized steps.
 
 ## Phase 2 — Extraction and verification (core complete)
 

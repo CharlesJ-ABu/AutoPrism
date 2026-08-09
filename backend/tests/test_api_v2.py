@@ -5,9 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
-from app.core.database import async_engine, get_db
+from app.core.database import async_engine, async_session_maker, get_db
 from app.main import app
+from app.services.search_discovery_service import DiscoveryCandidate
 from app.services.verification_service import observation_numeric_values
 
 
@@ -249,6 +252,108 @@ class V2ApiInputContractTests(unittest.IsolatedAsyncioTestCase):
 class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await async_engine.dispose()
+
+    async def test_search_discovery_persists_candidates_without_credentials(self):
+        suffix = uuid.uuid4().hex
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            pool_response = await client.post(
+                "/api/v2/sources/pools",
+                json={
+                    "key": f"discovery-{suffix}",
+                    "name": "Discovery test",
+                    "topic": "official vehicle data",
+                    "discovery_query": "site:example.gov vehicle report",
+                },
+            )
+            self.assertEqual(pool_response.status_code, 201, pool_response.text)
+            pool = pool_response.json()
+            with patch(
+                "app.services.search_discovery_service."
+                "GoogleProgrammableSearchProvider.discover",
+                new=AsyncMock(
+                    return_value=[
+                        DiscoveryCandidate(
+                            title="Official report",
+                            url="https://example.gov/report.pdf",
+                            display_host="example.gov",
+                            snippet="Published source",
+                            mime_type="application/pdf",
+                            suggested_kind="pdf",
+                        )
+                    ]
+                ),
+            ):
+                response = await client.post(
+                    f"/api/v2/sources/pools/{pool['id']}/discover",
+                    json={
+                        "api_key": "must-not-persist",
+                        "search_engine_id": "engine-must-not-persist",
+                        "safe": "active",
+                    },
+                )
+            self.assertEqual(response.status_code, 201, response.text)
+            payload = response.json()
+            self.assertEqual(payload["result_count"], 1)
+            self.assertTrue(payload["integrity_valid"])
+            self.assertEqual(payload["candidates"][0]["suggested_kind"], "pdf")
+            self.assertNotIn("must-not-persist", response.text)
+
+            history = await client.get(
+                f"/api/v2/sources/discovery-runs?pool_id={pool['id']}"
+            )
+            self.assertEqual(history.status_code, 200, history.text)
+            self.assertEqual(len(history.json()), 1)
+            self.assertEqual(history.json()[0]["result_hash"], payload["result_hash"])
+            self.assertTrue(history.json()[0]["integrity_valid"])
+            self.assertNotIn("must-not-persist", history.text)
+
+        async with async_session_maker() as db:
+            frozen_text = (
+                await db.execute(
+                    text(
+                        "SELECT query || provider_config_hash || result_hash "
+                        "FROM source_discovery_runs WHERE id = :run_id"
+                    ),
+                    {"run_id": payload["id"]},
+                )
+            ).scalar_one()
+            self.assertNotIn("must-not-persist", frozen_text)
+            with self.assertRaises(DBAPIError):
+                await db.execute(
+                    text(
+                        "UPDATE source_discovery_runs SET query = 'rewritten' "
+                        "WHERE id = :run_id"
+                    ),
+                    {"run_id": payload["id"]},
+                )
+                await db.commit()
+            await db.rollback()
+            with self.assertRaises(DBAPIError):
+                await db.execute(text("TRUNCATE source_discovery_runs CASCADE"))
+                await db.commit()
+            await db.rollback()
+            with self.assertRaises(DBAPIError):
+                await db.execute(
+                    text(
+                        "INSERT INTO source_discovery_candidates "
+                        "(id, run_id, ordinal, title, url, url_sha256, "
+                        "display_host, snippet, mime_type, suggested_kind, created_at) "
+                        "VALUES (:id, :run_id, 1, 'late result', "
+                        "'https://example.gov/late', :url_hash, 'example.gov', "
+                        "'', NULL, 'html', now())"
+                    ),
+                    {
+                        "id": uuid.uuid4(),
+                        "run_id": payload["id"],
+                        "url_hash": "0" * 64,
+                    },
+                )
+                await db.commit()
+            await db.rollback()
 
     async def test_source_and_versioned_dashboard_contracts(self):
         suffix = uuid.uuid4().hex

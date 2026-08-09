@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, SecretStr
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +13,17 @@ from app.models.sources import (
     CollectionJob,
     HumanActionRequest,
     SourceDefinition,
+    SourceDiscoveryCandidate,
+    SourceDiscoveryRun,
     SourceKind,
     SourcePool,
 )
 from app.services.collection_queue import CollectionQueue, create_collection_job
+from app.services.search_discovery_service import (
+    SearchDiscoveryError,
+    SearchDiscoveryService,
+    discovery_run_integrity_valid,
+)
 
 
 router = APIRouter()
@@ -46,6 +53,15 @@ class SourceCreate(BaseModel):
     refresh_policy: dict[str, Any] = Field(default_factory=dict)
     request_config: dict[str, Any] = Field(default_factory=dict)
     parser_config: dict[str, Any] = Field(default_factory=dict)
+
+
+class GoogleDiscoveryRequest(BaseModel):
+    api_key: SecretStr = Field(min_length=1, max_length=500)
+    search_engine_id: str = Field(min_length=1, max_length=255)
+    query: str | None = Field(default=None, min_length=1, max_length=500)
+    limit: int = Field(default=10, ge=1, le=10)
+    start: int = Field(default=1, ge=1, le=91)
+    safe: Literal["active", "off"] = "active"
 
 
 def _pool_dict(item: SourcePool) -> dict[str, Any]:
@@ -102,6 +118,40 @@ def _job_dict(item: CollectionJob) -> dict[str, Any]:
     }
 
 
+def _candidate_dict(item: SourceDiscoveryCandidate) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "ordinal": item.ordinal,
+        "title": item.title,
+        "url": item.url,
+        "url_sha256": item.url_sha256,
+        "display_host": item.display_host,
+        "snippet": item.snippet,
+        "mime_type": item.mime_type,
+        "suggested_kind": item.suggested_kind,
+        "created_at": item.created_at,
+    }
+
+
+def _discovery_run_dict(
+    item: SourceDiscoveryRun,
+    candidates: list[SourceDiscoveryCandidate],
+) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "pool_id": str(item.pool_id),
+        "provider": item.provider,
+        "query": item.query,
+        "provider_config_hash": item.provider_config_hash,
+        "result_count": item.result_count,
+        "result_hash": item.result_hash,
+        "integrity_valid": discovery_run_integrity_valid(item, candidates),
+        "requested_at": item.requested_at,
+        "completed_at": item.completed_at,
+        "candidates": [_candidate_dict(candidate) for candidate in candidates],
+    }
+
+
 @router.post("/pools", status_code=201)
 async def create_pool(payload: PoolCreate, db: AsyncSession = Depends(get_db)):
     existing = (
@@ -120,6 +170,77 @@ async def create_pool(payload: PoolCreate, db: AsyncSession = Depends(get_db)):
 async def list_pools(db: AsyncSession = Depends(get_db)):
     items = (await db.execute(select(SourcePool).order_by(SourcePool.name))).scalars()
     return [_pool_dict(item) for item in items]
+
+
+@router.post("/pools/{pool_id}/discover", status_code=201)
+async def discover_pool_sources(
+    pool_id: uuid.UUID,
+    payload: GoogleDiscoveryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    pool = await db.get(SourcePool, pool_id)
+    if pool is None:
+        raise HTTPException(status_code=404, detail="source pool not found")
+    query = (payload.query or pool.discovery_query or "").strip()
+    if not query:
+        raise HTTPException(
+            status_code=422,
+            detail="discovery query is required in the request or source pool",
+        )
+    try:
+        run, candidates = await SearchDiscoveryService(db).discover_google(
+            pool=pool,
+            api_key=payload.api_key.get_secret_value(),
+            search_engine_id=payload.search_engine_id.strip(),
+            query=query,
+            limit=payload.limit,
+            start=payload.start,
+            safe=payload.safe,
+        )
+    except SearchDiscoveryError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+    return _discovery_run_dict(run, candidates)
+
+
+@router.get("/discovery-runs")
+async def list_discovery_runs(
+    pool_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    statement = select(SourceDiscoveryRun)
+    if pool_id is not None:
+        statement = statement.where(SourceDiscoveryRun.pool_id == pool_id)
+    runs = list(
+        (
+            await db.execute(
+                statement.order_by(desc(SourceDiscoveryRun.requested_at)).limit(limit)
+            )
+        ).scalars()
+    )
+    if not runs:
+        return []
+    candidates = list(
+        (
+            await db.execute(
+                select(SourceDiscoveryCandidate)
+                .where(
+                    SourceDiscoveryCandidate.run_id.in_([item.id for item in runs])
+                )
+                .order_by(
+                    SourceDiscoveryCandidate.run_id,
+                    SourceDiscoveryCandidate.ordinal,
+                )
+            )
+        ).scalars()
+    )
+    by_run: dict[uuid.UUID, list[SourceDiscoveryCandidate]] = {
+        item.id: [] for item in runs
+    }
+    for candidate in candidates:
+        by_run[candidate.run_id].append(candidate)
+    return [_discovery_run_dict(item, by_run[item.id]) for item in runs]
 
 
 @router.post("/pools/{pool_id}", status_code=201)

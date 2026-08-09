@@ -21,6 +21,8 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - HTML、RSS、PDF、CSV、XLSX、JSON API 解析及可重现定位器。
 - Redis 采集队列与独立 Worker。
 - 来源池、可信度、主题权威度、抓取策略和人工处理队列。
+- Google Programmable Search 合规发现工作台：API key/CX 仅用于单次请求，
+  结果进入不可变候选历史，但不会自动注册或采集。
 - 冻结的主面板/子面板版本、JSON Schema、UI DSL、组件源码哈希、
   提示词版本和模型设置。
 - OpenAI-compatible 与 Google Gemini 的供应商无关模型适配器。
@@ -127,6 +129,12 @@ docker compose exec -T web alembic check
 真实备份副本升级和 `alembic check` 通过；旧 6 条观测未被补写数值或误差。
 前端 typecheck/build 与依赖审计通过。当前浏览器换算工作台冒烟结果记录在
 [测试记录](docs/V2_TESTING.md)。
+
+同日 M9 验证记录：迁移 `0008_v2_source_discovery` / `0009_v2_discovery_cardinality`
+在 fresh、空库循环和
+真实备份副本上通过；真实 6 条观测及摘要、1 个主面板均未变化。一次性
+PostgreSQL 完整套件 59/59、前端 typecheck/build 与生产依赖审计通过；发现
+候选保持未注册，API key 与原始 CX 不进入数据库。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

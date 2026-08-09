@@ -26,7 +26,7 @@ retained to show the original gap and must not be read as current M6 status.
 | Tests | V1 build and crawler gaps are documented | 23 backend tests, migration checks, frontend build, Compose and browser record dated 2026-07-25 | Historical evidence only until re-run in the current worktree |
 | Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Historical gap; dedicated Schema/UI DSL, trust, testing and release documents now exist |
 
-### Current delta through M8
+### Current delta through M9
 
 - The V1-continuity cockpit and split component system remain implemented.
 - `evidence-extraction-v3` now freezes exact ordered extraction inputs.
@@ -48,6 +48,9 @@ retained to show the original gap and must not be read as current M6 status.
   visual/interaction smoke passed on the current bundle.
 - The safe UI DSL now validates and renders bounded single-series charts and
   evidence-date timelines without synthetic points or placeholder events.
+- Google source discovery now freezes credential-free normalized candidates;
+  every result remains visibly unregistered until a human completes the trust
+  and compliance registration form.
 
 ## Non-negotiable trust findings
 
@@ -77,6 +80,7 @@ retained to show the original gap and must not be read as current M6 status.
 | M6.1 Trusted dual insight map | Schema-bound geography, immutable coordinate citations, current-only L2 map contract and 3D/2D engines | `0006`, fresh/populated gates, 44/44 backend, frontend/Compose/browser baselines | Complete |
 | M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Complete; dimensional multiply/divide and triangular FX explicitly deferred |
 | M8 Safe visual DSL | Schema-bound single-series line/bar/area charts and evidence-date timelines with truthful empty states | 55/55 backend, frontend type/build, isolated non-empty desktop/mobile smoke | Complete; multi-series/map remain explicitly unsupported |
+| M9 Compliant discovery | Ephemeral Google credentials, immutable normalized candidates and manual registration gate | `0008`/`0009`, fresh/cycle/populated gates, 59/59 backend, frontend audit/build and responsive smoke | Complete; no saved key and no automatic collection |
 
 ## Feature acceptance ledger
 
@@ -93,6 +97,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Manual edit and save new version | done | done | done | done |
 | Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
 | Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
+| Search discovery | request-only Google provider plus immutable normalized candidates | explicit authorization and manual registration handoff | done | done for first provider; candidates are never auto-collected |
 | Evidence viewing | all fragments plus INFO provenance | connected cockpit drawer | done | done |
 | Revision history | append-only with DB fork prevention | view and create replacement | done | done |
 | Cross-source validation | explicit tolerances plus independent source/artifact/frozen-publisher rule | view and run | done | done |
