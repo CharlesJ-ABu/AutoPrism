@@ -219,6 +219,13 @@ search, display-type filtering and a selectable feature index. The original
 feature objects, Trust status, map statistics and immutable L2 rows are not
 rewritten; zero matches is a filter state, not a claim that history vanished.
 
+M15 exposes that same read projection inside a frozen child panel through the
+non-field `trusted_map` DSL node. Server-side DSL validation requires executable
+`geo-scope-v1`; App filters features by exact `panel_version_keys` before the
+panel renderer receives them. The 2D camera fits only returned geometry, while
+loading/error/empty/truncation remain presentation states. There is no second
+map API, panel-output coordinate path, client geocoder or trust mutation.
+
 ## Runtime topology
 
 ```text

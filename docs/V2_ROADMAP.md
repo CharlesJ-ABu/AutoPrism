@@ -11,7 +11,7 @@ M6 includes the V1-continuity cockpit, immutable dashboard lifecycle, compliant
 direct-source operations, exact observation/extraction lineage, auditable
 INFO/validation/review workflows, append-only dynamically replayed trust
 eligibility and stored-input-only deterministic L2. See
-[V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
+[V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for completed gates and
 known limitations. The trusted-map follow-up and the bounded numeric M7
 milestone are complete. The safe UI DSL now includes bounded single- and
 multi-series charts plus evidence-date timelines. M9 adds credential-ephemeral Google source
@@ -20,6 +20,10 @@ gate. M10 adds append-only refresh-policy versions, immutable dispatch history
 and an independent Scheduler service. M11 adds an LLM research orchestrator
 that plans bounded discovery and collection from the database source inventory
 while leaving tool execution behind explicit gates.
+
+M14 and M15 extend analysis presentation without expanding trust authority:
+bounded multi-series charts, trusted-map navigation and a Schema-gated
+panel-level `trusted_map` that consumes only the existing current L2 read model.
 
 ## Status at branch creation
 
@@ -217,6 +221,24 @@ scope, not hidden release blockers.
 
 Exit: analysts can compare bounded real series and navigate dense trusted map
 results without introducing a transform, calculation, geocoding or fake-data path.
+
+## M15 — Panel-level trusted map DSL (complete)
+
+- Added a strict non-field `trusted_map` UI DSL node. It requires executable
+  `geo-scope-v1`, allows one node per panel, bounds features to 1–100 and rejects
+  unknown properties.
+- Connected each panel only to current `trusted-insight-map-v1` features whose
+  frozen `panel_version_keys` include that panel version. The renderer never
+  reads untrusted coordinates from panel output.
+- Added responsive 2D tactical rendering, geometry-fitted initial view,
+  accessible feature selection, evidence entry, and honest loading/error/empty/
+  truncation states.
+- Passed fresh zero-to-`0013`, 73/73 backend tests, migration drift, frontend
+  type/build/audit, rebuilt Compose, real-empty and isolated non-empty desktop/
+  390px browser gates. The isolated harness was removed and wrote no real data.
+
+Exit: a frozen child panel can embed the same trusted map read model as the
+Shell without introducing a second data, geocoding or trust path.
 
 ## M6 — Exact lineage and trust replay (complete)
 

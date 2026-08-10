@@ -579,6 +579,15 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                         "type": "integer",
                                         "x-unit": "vehicle",
                                     },
+                                    "location": {"type": "string"},
+                                    "latitude": {
+                                        "type": "number",
+                                        "x-unit": "degree_latitude",
+                                    },
+                                    "longitude": {
+                                        "type": "number",
+                                        "x-unit": "degree_longitude",
+                                    },
                                     "records": {
                                         "type": "array",
                                         "items": {
@@ -602,10 +611,22 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                         },
                                     },
                                 },
-                                "required": ["count", "records"],
+                                "required": [
+                                    "count",
+                                    "location",
+                                    "latitude",
+                                    "longitude",
+                                    "records",
+                                ],
                                 "x-autoprism": {
                                     "time_dimension": "snapshot.retrieved_at",
-                                    "geographic_dimension": "market",
+                                    "geographic_dimension": {
+                                        "contract_version": "geo-scope-v1",
+                                        "display_type": "HOTSPOT",
+                                        "label_field": "location",
+                                        "latitude_field": "latitude",
+                                        "longitude_field": "longitude",
+                                    },
                                     "aggregation": {"count": "latest"},
                                     "visualization_mapping": {"value": "count"},
                                 },
@@ -630,6 +651,12 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                         "time_field": "reported_at",
                                         "title_field": "label",
                                         "value_field": "value",
+                                    },
+                                    {
+                                        "type": "trusted_map",
+                                        "label": "Current trusted locations",
+                                        "max_features": 24,
+                                        "show_index": True,
                                     },
                                 ],
                             },
@@ -672,6 +699,10 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 detail["panels"][0]["ui_dsl"]["children"][1]["series_field"],
                 "label",
+            )
+            self.assertEqual(
+                detail["panels"][0]["ui_dsl"]["children"][3]["type"],
+                "trusted_map",
             )
 
             view_response = await client.get(

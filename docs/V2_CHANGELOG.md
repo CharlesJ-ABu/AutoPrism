@@ -5,6 +5,21 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M15 — panel-level trusted map UI DSL (2026-08-10)
+
+- Added the bounded `trusted_map` DSL node, requiring an executable
+  `geo-scope-v1` Panel Schema, one node per panel, 1–100 `max_features`, a
+  boolean index flag and no unknown properties.
+- Wired panel maps only to current replayed `trusted-insight-map-v1` features
+  whose frozen panel keys include the displayed PanelVersion. Added explicit
+  loading/error/empty/truncation states, feature selection and evidence entry.
+- Fitted the 2D tactical camera from immutable returned geometry so narrow
+  panels do not open on an unrelated fixed world center. No coordinates or
+  trust state are derived or changed.
+- Passed fresh zero-to-head migration, 73/73 database suite, `alembic check`,
+  frontend type/build, zero-vulnerability audit, rebuilt Compose and clean
+  desktop/390px browser gates. QA features remained isolated and were removed.
+
 ### M14 — safe multi-series analysis and trusted-map navigation (2026-08-10)
 
 - Extended the safe chart DSL with optional Schema-bound `series_field` and a

@@ -261,6 +261,12 @@ function App() {
                   key={panel.id}
                   panel={panel}
                   onInspect={() => setSelectedPanel(panel)}
+                  mapFeatures={(mapResponse?.features ?? []).filter(
+                    (feature) => feature.panel_version_keys.includes(panel.id),
+                  )}
+                  mapLoading={mapLoading}
+                  mapError={mapError}
+                  onMapRetry={() => void loadMapFeatures(view.panels)}
                 />
               ))}
             </section>

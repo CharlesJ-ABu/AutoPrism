@@ -126,6 +126,14 @@ M1–M5 screenshots were not reused as current acceptance evidence.
   only on current replayed API features and preserve an honest no-match state.
 - [x] M14 fresh zero-to-head migration, 72/72 database suite, frontend build/
   audit and real-empty plus isolated-nonempty desktop/390px browser gates passed.
+- [x] M15 `trusted_map` requires executable `geo-scope-v1`, is unique per panel,
+  bounds the current replayed feature list and rejects unknown/free-form fields.
+- [x] Panel maps receive only features naming their exact PanelVersion, expose
+  honest loading/error/empty/truncation states and fit immutable geometry on
+  desktop and 390px without creating or changing facts.
+- [x] M15 fresh zero-to-head migration, 73/73 suite, drift check, frontend build/
+  audit, Compose rebuild and clean real/isolated browser gates passed; the mobile
+  drawer hid the sidebar and the QA harness wrote no real data.
 - [x] `v2` remains independent; no PR or merge to the frozen V1 `main` branch
   was created.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
@@ -166,13 +174,14 @@ insight.
 - Manual revisions remain ineligible until an evidence-bound human-attestation
   contract can be replayed.
 - Safe UI DSL supports stack, metric, table, bounded single-/multi-series chart,
-  evidence-date timeline and provenance. A general panel-level map remains
-  unavailable. Custom React runs only under the empty-dependency local sandbox;
-  third-party packages and multi-tenant execution remain unavailable.
+  evidence-date timeline, `geo-scope-v1`-gated `trusted_map` and provenance.
+  Free-form maps, heatmaps, radar and networks remain unavailable. Custom React
+  runs only under the empty-dependency local sandbox; third-party packages and
+  multi-tenant execution remain unavailable.
 - L2 is a deterministic stored-input evidence summary, not predictive or
   externally augmented analysis.
-- General panel-level `map` remains outside the safe UI DSL; the implemented
-  Shell map has its own `trusted-insight-map-v1` contract.
+- General free-form `map` remains outside the safe UI DSL; the implemented Shell
+  and panel `trusted_map` share the same `trusted-insight-map-v1` contract.
 - Multi-axis, mixed-unit and calculated/aggregated chart series remain outside
   the safe contract; unsupported declarations are rejected rather than coerced.
 

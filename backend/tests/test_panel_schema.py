@@ -308,6 +308,48 @@ class PanelSchemaTests(unittest.TestCase):
             },
         )
 
+    def test_trusted_map_dsl_requires_executable_geography_and_strict_limits(self):
+        schema = deepcopy(VALID_SCHEMA)
+        schema["properties"].update(
+            {
+                "location": {"type": "string"},
+                "latitude": {"type": "number", "x-unit": "degree_latitude"},
+                "longitude": {"type": "number", "x-unit": "degree_longitude"},
+            }
+        )
+        schema["required"].extend(["location", "latitude", "longitude"])
+        schema["x-autoprism"]["geographic_dimension"] = {
+            "contract_version": "geo-scope-v1",
+            "display_type": "HOTSPOT",
+            "label_field": "location",
+            "latitude_field": "latitude",
+            "longitude_field": "longitude",
+        }
+        node = {
+            "type": "trusted_map",
+            "label": "Current trusted locations",
+            "max_features": 24,
+            "show_index": True,
+        }
+        self.assertEqual(validate_ui_dsl(schema, node), ())
+        self.assertTrue(validate_ui_dsl(VALID_SCHEMA, node))
+        for invalid_limit in (0, 101, True):
+            with self.subTest(max_features=invalid_limit):
+                self.assertTrue(
+                    validate_ui_dsl(
+                        schema,
+                        {**node, "max_features": invalid_limit},
+                    )
+                )
+        self.assertTrue(validate_ui_dsl(schema, {**node, "show_index": "yes"}))
+        self.assertTrue(validate_ui_dsl(schema, {**node, "field": "latitude"}))
+        self.assertTrue(
+            validate_ui_dsl(
+                schema,
+                {"type": "stack", "children": [node, node]},
+            )
+        )
+
     def test_geography_rejects_unproven_or_invalid_coordinates(self):
         schema = {
             **VALID_SCHEMA,

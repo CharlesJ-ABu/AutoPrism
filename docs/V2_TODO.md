@@ -23,6 +23,10 @@ M14 is complete: safe charts accept a bounded Schema-backed grouping field and
 the trusted Shell map now has local search, type filters and an accessible
 feature index. Neither path adds calculation, geocoding or trust authority.
 
+M15 is complete: a frozen panel may declare one bounded `trusted_map` only when
+its Schema carries executable `geo-scope-v1`. It consumes the existing current
+trusted L2 read model and adds no panel-data coordinate shortcut.
+
 ## M7 follow-ups
 
 M7's fixed registry, bounded Decimal engine, direct/inverse evidence-bound FX,
@@ -45,7 +49,7 @@ is deliberately separate:
 - Encrypted saved search-provider credentials remain SaaS-only; local V2 asks
   for the Google API key and CX on each discovery request.
 - Expand safe UI DSL beyond the implemented metric/table/bounded multi-series-
-  chart/timeline/provenance subset to panel map, heatmap, radar, ticker and
+  chart/timeline/trusted-map/provenance subset to heatmap, radar, ticker and
   network components. Mixed-unit/multi-axis charts require a separate contract.
 - Expand the custom runtime beyond its current empty dependency allowlist only
   after each library has a reviewed immutable version and security contract.

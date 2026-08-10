@@ -22,7 +22,7 @@ const COLORS: Record<TrustedMapFeature['display_type'], [number, number, number,
   ZONE: [192, 132, 252, 180],
 };
 
-const INITIAL_VIEW = {
+const DEFAULT_VIEW = {
   longitude: 20,
   latitude: 18,
   zoom: 1.15,
@@ -30,6 +30,33 @@ const INITIAL_VIEW = {
   maxZoom: 15,
   pitch: 0,
   bearing: 0,
+};
+
+const geometryPositions = (feature: TrustedMapFeature): Array<[number, number]> => {
+  if (feature.geometry.type === 'Point') return [feature.geometry.coordinates];
+  if (feature.geometry.type === 'LineString') return feature.geometry.coordinates;
+  return feature.geometry.coordinates.flat();
+};
+
+const fittedView = (features: TrustedMapFeature[]) => {
+  const positions = features.flatMap(geometryPositions);
+  if (!positions.length) return DEFAULT_VIEW;
+  const longitudes = positions.map(([longitude]) => longitude);
+  const latitudes = positions.map(([, latitude]) => latitude);
+  const west = Math.min(...longitudes);
+  const east = Math.max(...longitudes);
+  const south = Math.min(...latitudes);
+  const north = Math.max(...latitudes);
+  const span = Math.max(east - west, (north - south) * 1.7);
+  const zoom = span === 0
+    ? 4
+    : Math.max(.5, Math.min(7, Math.log2(360 / Math.max(1, span * 3.2))));
+  return {
+    ...DEFAULT_VIEW,
+    longitude: (west + east) / 2,
+    latitude: (south + north) / 2,
+    zoom,
+  };
 };
 
 export default function TrustedTacticalMap({
@@ -41,6 +68,7 @@ export default function TrustedTacticalMap({
   const points = features.filter((feature) => feature.geometry.type === 'Point');
   const lines = features.filter((feature) => feature.geometry.type === 'LineString');
   const zones = features.filter((feature) => feature.geometry.type === 'Polygon');
+  const initialViewState = useMemo(() => fittedView(features), [features]);
   const layers = useMemo(() => [
     new PolygonLayer<TrustedMapFeature>({
       id: `trusted-zones-${mapStyle}`,
@@ -96,7 +124,7 @@ export default function TrustedTacticalMap({
       <div className="tactical-grid" aria-hidden="true" />
       <DeckGL
         layers={layers}
-        initialViewState={INITIAL_VIEW}
+        initialViewState={initialViewState}
         controller
         getTooltip={({ object }) => object && (object as TrustedMapFeature).label}
       />

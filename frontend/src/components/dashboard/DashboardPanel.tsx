@@ -1,11 +1,12 @@
 import { ChevronRight, Database, Fingerprint } from 'lucide-react';
 
 import { safeHostname, formatDate, shortHash } from '../../lib/format';
-import type { PanelView } from '../../lib/v2-api';
+import type { PanelView, TrustedMapFeature } from '../../lib/v2-api';
 import { Status } from '../ui';
 import { SafeChart } from './SafeChart';
 import { SafeTimeline } from './SafeTimeline';
 import { CustomReactRuntime } from './CustomReactRuntime';
+import { PanelTrustedMap } from './PanelTrustedMap';
 
 const flattenDsl = (node: PanelView['ui_dsl']): PanelView['ui_dsl'][] => (
   node.type === 'stack'
@@ -26,15 +27,24 @@ const objectRows = (value: unknown) => (
 export function DashboardPanel({
   panel,
   onInspect,
+  mapFeatures,
+  mapLoading,
+  mapError,
+  onMapRetry,
 }: {
   panel: PanelView;
   onInspect: () => void;
+  mapFeatures: TrustedMapFeature[];
+  mapLoading: boolean;
+  mapError: string;
+  onMapRetry: () => void;
 }) {
   const dslNodes = flattenDsl(panel.ui_dsl);
   const metricNode = dslNodes.find((item) => item.type === 'metric');
   const tableNode = dslNodes.find((item) => item.type === 'table');
   const chartNodes = dslNodes.filter((item) => item.type === 'chart');
   const timelineNodes = dslNodes.filter((item) => item.type === 'timeline');
+  const trustedMapNodes = dslNodes.filter((item) => item.type === 'trusted_map');
   const metricField = metricNode?.field;
   const metricValue = metricField ? panel.data?.[metricField] : undefined;
   const tableField = tableNode?.field;
@@ -92,6 +102,17 @@ export function DashboardPanel({
           key={`timeline-${node.field}-${index}`}
           node={node}
           rows={objectRows(node.field ? panel.data?.[node.field] : undefined)}
+        />
+      ))}
+      {panel.template_kind === 'ui_dsl' && trustedMapNodes.map((node, index) => (
+        <PanelTrustedMap
+          key={`trusted-map-${index}`}
+          node={node}
+          features={mapFeatures}
+          loading={mapLoading}
+          error={mapError}
+          onRetry={onMapRetry}
+          onInspect={onInspect}
         />
       ))}
       {panel.template_kind === 'ui_dsl' && tableNode && visibleRecords.length > 0 ? (

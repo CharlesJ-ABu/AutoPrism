@@ -593,7 +593,7 @@ export interface Evidence {
 }
 
 export interface UiDslNode {
-  type: 'stack' | 'metric' | 'table' | 'chart' | 'timeline' | 'provenance';
+  type: 'stack' | 'metric' | 'table' | 'chart' | 'timeline' | 'trusted_map' | 'provenance';
   field?: string;
   label?: string;
   unit?: string;
@@ -605,6 +605,8 @@ export interface UiDslNode {
   series_field?: string;
   max_points?: number;
   max_series?: number;
+  max_features?: number;
+  show_index?: boolean;
   time_field?: string;
   title_field?: string;
   value_field?: string;

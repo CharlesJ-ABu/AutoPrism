@@ -615,7 +615,15 @@ def validate_observation_contract(
 
 
 ALLOWED_UI_DSL_TYPES = frozenset(
-    {"stack", "metric", "table", "chart", "timeline", "provenance"}
+    {
+        "stack",
+        "metric",
+        "table",
+        "chart",
+        "timeline",
+        "trusted_map",
+        "provenance",
+    }
 )
 
 
@@ -632,8 +640,10 @@ def validate_ui_dsl(
         return (SchemaIssue("$.ui_dsl", "UI DSL root must be an object"),)
     properties = schema.get("properties")
     schema_properties = properties if isinstance(properties, dict) else {}
+    trusted_map_count = 0
 
     def walk(node: Any, path: str, depth: int) -> None:
+        nonlocal trusted_map_count
         if depth > 8:
             issues.append(SchemaIssue(path, "UI DSL nesting exceeds 8 levels"))
             return
@@ -668,6 +678,64 @@ def validate_ui_dsl(
             issues.append(
                 SchemaIssue(path, f"{node_type} nodes cannot contain children")
             )
+
+        if node_type == "trusted_map":
+            trusted_map_count += 1
+            if trusted_map_count > 1:
+                issues.append(
+                    SchemaIssue(path, "only one trusted_map node is allowed per panel")
+                )
+            metadata = schema.get("x-autoprism")
+            geographic_mapping = (
+                metadata.get("geographic_dimension")
+                if isinstance(metadata, Mapping)
+                else None
+            )
+            if (
+                not isinstance(geographic_mapping, Mapping)
+                or geographic_mapping.get("contract_version")
+                != GEO_SCOPE_CONTRACT_VERSION
+                or geographic_mapping.get("display_type") not in MAP_DISPLAY_TYPES
+            ):
+                issues.append(
+                    SchemaIssue(
+                        path,
+                        "trusted_map requires an executable geo-scope-v1 panel schema",
+                    )
+                )
+            label = node.get("label")
+            if label is not None and (
+                not isinstance(label, str) or not label.strip() or len(label) > 200
+            ):
+                issues.append(
+                    SchemaIssue(
+                        f"{path}.label",
+                        "must be a non-empty string of at most 200 characters",
+                    )
+                )
+            max_features = node.get("max_features", 24)
+            if (
+                isinstance(max_features, bool)
+                or not isinstance(max_features, int)
+                or not 1 <= max_features <= 100
+            ):
+                issues.append(
+                    SchemaIssue(
+                        f"{path}.max_features",
+                        "must be an integer from 1 to 100",
+                    )
+                )
+            if "show_index" in node and not isinstance(node["show_index"], bool):
+                issues.append(
+                    SchemaIssue(
+                        f"{path}.show_index",
+                        "must be boolean",
+                    )
+                )
+            if set(node) - {"type", "label", "max_features", "show_index"}:
+                issues.append(
+                    SchemaIssue(path, "trusted_map contains unsupported properties")
+                )
 
         if node_type in {"metric", "table", "chart", "timeline"}:
             field = node.get("field")

@@ -76,7 +76,7 @@ explicit UTC offset. `period_end` uses `field`; `period_average` uses required
 `start_field` and `end_field`. Legacy descriptive strings remain display
 metadata and provide no currency-conversion authority.
 
-### Executable geography for the Shell map
+### Executable geography for the Shell and panel maps
 
 A descriptive string such as `"US"` remains valid legacy metadata but grants
 no map authority. A new feature may be mapped only with `geo-scope-v1`:
@@ -203,6 +203,33 @@ value field must be numeric.
 Events are sorted only from their stored timestamps. Invalid or missing dates
 are not repaired, and the renderer never creates placeholder events.
 
+### `trusted_map`
+
+Displays the current trusted geographic L2 features associated with this exact
+panel version. It is a non-field node: coordinates never come directly from
+`panel.data`, and the client cannot geocode, synthesize or promote a feature.
+
+```json
+{
+  "type": "trusted_map",
+  "label": "当前可信供应链地理洞察",
+  "max_features": 24,
+  "show_index": true
+}
+```
+
+The frozen Panel Schema must contain an executable `geo-scope-v1`
+`x-autoprism.geographic_dimension`; a descriptive geography string is not
+enough. Only one `trusted_map` node is allowed per panel. `max_features` is an
+integer from 1–100 and bounds the already replayed feature list without
+aggregation. `show_index` controls the accessible selector. Loading, error,
+empty and omitted-feature states remain explicit.
+
+The renderer receives only `trusted-insight-map-v1` features whose
+`panel_version_keys` contain the current panel version. Its initial camera is
+fitted from the returned immutable geometry; fitting changes presentation only
+and never rewrites a coordinate or Trust/L2 state.
+
 ### `provenance`
 
 Requests the trusted provenance footer and evidence terminal.
@@ -231,10 +258,10 @@ until they have:
 - accessibility and responsive tests;
 - evidence-aware labels and unit handling.
 
-The situation map in the V2 Shell is not a general panel DSL node. It consumes
-only `trusted-insight-map-v1` features built from `geo-scope-v1`, current
-ELIGIBLE inputs and replayable claim citations. A panel-level `map` node remains
-unsupported until the richer DSL milestone.
+The Shell situation map and the bounded panel-level `trusted_map` consume only
+`trusted-insight-map-v1` features built from `geo-scope-v1`, current ELIGIBLE
+inputs and replayable claim citations. A free-form `map` node remains
+unsupported; it is not an alias for `trusted_map`.
 
 ## Custom React
 

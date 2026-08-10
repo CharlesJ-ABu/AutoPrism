@@ -2,6 +2,34 @@
 
 Last full validation: 2026-08-10 (Asia/Shanghai).
 
+## M15 panel-level trusted-map result
+
+A new disposable database, `autoprism_v2_m15_gate_20260810`, upgraded from zero
+through `0013_v2_evidence_interpretations`. The complete database-enabled suite
+passed 73/73, including dashboard-version round trip and focused rejection of
+descriptive geography, duplicate maps, booleans/out-of-range limits and unknown
+properties. `alembic check` reported no model/migration drift.
+
+Frontend typecheck and production build passed with 2,892 transformed modules;
+the main bundle was 283.90 kB (84.89 kB gzip), with the tactical and globe
+engines still lazy chunks. Production dependency audit reported zero
+vulnerabilities across 91 production dependencies.
+
+The rebuilt production Compose UI passed its truthful zero-feature state with
+no browser warning/error and no desktop horizontal overflow. A temporary,
+explicitly labeled, API-free harness then proved three non-empty trusted
+geometries, feature-index selection/evidence feedback, geometry-fitted camera,
+and LOADING/ERROR/EMPTY states. A 390px iframe gate kept the map and index inside
+the panel; the clean console contained only Vite connection debug messages. The
+real production 390px gate proved the version drawer visible while the sidebar
+was hidden, preventing the prior overlay obstruction. The harness was removed
+and no QA feature was written to either database.
+
+Visual records are `v2-m15-panel-map-1280x720.png`,
+`v2-m15-panel-map-mobile-frame-1280x720.png` and
+`v2-m15-mobile-drawer-frame-1280x720.png` under
+`docs/visual-baselines/2026-08-10/`.
+
 ## M14 safe multi-series and map-navigation result
 
 A new disposable database, `autoprism_v2_m14_gate_20260810`, upgraded from zero

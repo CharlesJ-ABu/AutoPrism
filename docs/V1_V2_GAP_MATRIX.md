@@ -90,6 +90,7 @@ retained to show the original gap and must not be read as current M6 status.
 | M12 Interpretation/runtime | Evidence-bound narrative plus opaque-origin, no-network custom runtime | `0013`, 72/72 backend, runtime security and responsive browser gates | Complete |
 | M13 Release closeout | Full regression, same-size V1/V2 comparison and v2-only handoff | Compose/API/log/drift/browser gates | Complete |
 | M14 Safe analysis visualization | Schema-bound 2–12 series charts and trusted-map search/type/index navigation | 72/72 backend, frontend build/audit, real-empty and isolated-nonempty browser gates | Complete; panel-map and mixed-unit axes remain unsupported |
+| M15 Panel trusted-map DSL | One `geo-scope-v1`-gated map per panel, exact PanelVersion filtering and responsive geometry fitting | 73/73 backend, frontend build/audit, real-empty and isolated non-empty desktop/390px gates | Complete; free-form maps and heatmap/radar/network remain unsupported |
 
 ## Feature acceptance ledger
 
@@ -102,7 +103,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Main dashboard list and switch | done | done | partial | partial |
 | Create main dashboard | done | done | partial | partial |
 | LLM child-panel design | done | done | partial | partial |
-| JSON Schema and UI DSL | done with field-bound multi-series chart/timeline validation | structured editor plus safe renderers | done | done for current safe subset |
+| JSON Schema and UI DSL | done with field-bound multi-series chart/timeline plus `geo-scope-v1` trusted-map validation | structured editor plus safe renderers | done | done for current safe subset |
 | Manual edit and save new version | done | done | done | done |
 | Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
 | Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
@@ -116,7 +117,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Deterministic calculations | bounded Decimal engine, normalized trusted inputs and replay records | view and run eligible plans | done | add/subtract/percent/weighted-average eligible after full replay |
 | Unit conversion registry | fixed versioned dimension/semantic registry | compatible-target selection and conversion history | done | no free aliases or caller factors |
 | L2 stored-data-only analysis | normalized eligible inputs and immutable hash | connected with explicit unavailable state | done | done for deterministic evidence summary |
-| V1-style insight map | immutable `geo-scope-v1` plus current `trusted-insight-map-v1` replay | real 3D globe/2D tactical engines, search/type filters, accessible index and honest states | done | done; reference data correctly has zero qualified features |
+| V1-style insight map | immutable `geo-scope-v1` plus current `trusted-insight-map-v1` replay | real Shell 3D/2D engines plus panel-level `trusted_map`, search/type/index and honest states | done | done; reference data correctly has zero qualified features |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |
 | Encrypted credential vault | SaaS-only deferred | explicit TODO required | missing | deferred |
 | Isolated custom React runtime | frozen hash/contract validation | opaque-origin worker sandbox, no network/imports and safe vDOM | security/browser tests | done for empty dependency allowlist |
