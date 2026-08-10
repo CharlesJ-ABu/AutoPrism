@@ -5,6 +5,19 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M13 — V2 release regression and handoff (2026-08-10)
+
+- Re-ran the 72/72 disposable-PostgreSQL suite, final frontend type/build,
+  production dependency audit, container dependency check and real-database
+  Alembic drift gate.
+- Confirmed all six Compose services healthy, eight core read paths returned
+  HTTP 200, recent web/worker/scheduler/frontend logs contained no error,
+  exception, traceback or fatal entry, and real history remained unchanged.
+- Captured final V1/V2 same-size 1440×800 cockpit and AI Research records plus
+  the 390×844 no-overflow gate. The sidebar/overlay fix and clean console held.
+- Release remains `v2`-only. No PR or merge to the frozen unauthenticated V1
+  `main` branch was created.
+
 ### M12 — isolated custom runtime and evidence-bound interpretation (2026-08-10)
 
 - Added `custom-react-sandbox-v1`: source/hash verification, worker compilation,

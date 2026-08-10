@@ -310,3 +310,18 @@ warning in the HTML parser test. It does not affect output.
   proved custom runtime READY, network BLOCKED and 250 ms infinite-loop
   termination. Visual records are `v2-m12-research-1280x720.png`,
   `v2-m12-interpretation-390x844.png` and `v2-m12-runtime-1280x720.png`.
+
+## M13 release closeout — 2026-08-10
+
+- Re-ran the final 72/72 database suite and frontend type/build after all M12
+  security changes. Production dependency audit remained zero-vulnerability;
+  container `pip check` remained clean.
+- Real database `alembic check` reported no drift at 0013. Six observations,
+  digest `d89b6eed0d4287ec35520cbd16386ce5`, one dashboard and zero interpretation
+  rows remained unchanged.
+- All six Compose services were healthy. Dashboards, source pools/jobs, unit
+  registry, map features, research runs/interpretations and observation reads
+  each returned HTTP 200; recent service logs contained no error signature.
+- Final `v2-m13-cockpit-1440x800.png` and
+  `v2-m13-research-1440x800.png` match the V1 baseline dimensions. The 390×844
+  production smoke retained `scrollWidth=390`, scroll lock and a clean console.

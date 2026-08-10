@@ -294,3 +294,14 @@ has a real path with missing required behavior; **missing** has no usable path;
 - Migration `0013`, 72/72 backend tests, frontend build/audit, real backed-up
   migration and desktop/mobile/security browser smoke passed. The remaining
   release work is M13 regression and handoff rather than missing M12 wiring.
+
+## M13 final acceptance
+
+- The final V2 cockpit and V1 reference were captured at the same 1440×800
+  dimensions. V2 retains the dark purple/cyan intelligence cockpit, top
+  perspectives, situation map, dense professional panels and evidence actions;
+  its added orchestration/version/trust controls read as an upgrade, not a
+  separate administration product.
+- Full backend, frontend, migration, dependency, Compose, API, log, desktop and
+  mobile gates passed after M12. Remaining limitations are listed explicitly
+  and do not masquerade as connected features.

@@ -158,6 +158,11 @@ downgrade/re-upgrade 与漂移检查通过；72/72 后端测试、前端 typeche
 ELIGIBLE 的观测，冻结证据/评估/提示词/输出哈希且不改变 trust state。自定义
 React 面板已进入无网络、无依赖、opaque-origin、250 ms 执行上限的隔离运行时。
 
+同日 M13 发布收口：真实 Compose 六服务健康，8 条核心 API 路径均返回 200，
+真实库 `alembic check` 无漂移，最近服务日志无 error/exception/fatal。最终
+1440×800 V1/V2 同尺寸驾驶舱与 AI 研究截图、390×844 响应式门禁均通过；
+`v2` 保持独立发布，未创建合并到 `main` 的 PR。
+
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和
 [待办](docs/V2_TODO.md)。

@@ -184,7 +184,18 @@ hard execution limits. Additional allowlisted visual types remain pending.
 - Preserve stale narrative history while removing its `currently_grounded` label.
 
 Exit: migration, 72/72 backend tests, frontend/static audits, real backed-up
-upgrade and desktop/mobile/security browser gates pass. M13 is release closeout.
+upgrade and desktop/mobile/security browser gates pass. M13 closeout is recorded below.
+
+## M13 — V2 release regression and handoff (complete)
+
+- Re-run the full migration, backend, frontend, dependency, Compose, API,
+  browser, responsive and log gates after M12 is frozen.
+- Reconcile the real observation digest and all new-table empty states.
+- Capture final same-size V1/V2 visual records and confirm the cockpit identity.
+- Fast-forward only `origin/v2`; do not create a merge path to `main`.
+
+Exit: all checks pass and the remaining items are explicitly deferred product
+scope, not hidden release blockers.
 
 ## M6 — Exact lineage and trust replay (complete)
 

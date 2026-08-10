@@ -15,6 +15,10 @@ M12 is complete: evidence-bound model narratives consume only current eligible
 observations and preserve exact citations/hashes without changing trust state;
 custom React presentation runs in the bounded opaque-origin sandbox.
 
+M13 release regression is complete: the final database/static/Compose/API/
+browser/log gates and same-size V1/V2 visual comparison passed. Further work
+below is deliberate post-V2 or SaaS scope.
+
 ## M7 follow-ups
 
 M7's fixed registry, bounded Decimal engine, direct/inverse evidence-bound FX,
@@ -29,8 +33,8 @@ is deliberately separate:
 
 ## V2 next
 
-- M13: full release regression, documentation consistency, final Compose and
-  V1/V2 visual comparison, remote fast-forward check and V2 release handoff.
+- No unacknowledged V2 release blocker remains. New capability work must begin
+  as a separately scoped milestone and preserve the current trust boundaries.
 
 - Additional discovery providers only after they implement the same ephemeral
   credential, normalized URL, immutable result and manual-registration boundary.

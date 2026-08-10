@@ -117,6 +117,10 @@ M1–M5 screenshots were not reused as current acceptance evidence.
   untrusted execution at 250 ms; READY/fetch/loop browser cases passed.
 - [x] M12 migration `0013` passed fresh/cycle/drift and backed-up real upgrade;
   72/72 backend tests, frontend build/audit and desktop/390px gates passed.
+- [x] M13 final real-database drift check, six-service Compose health, eight
+  core API reads, recent error-log scan and 1440×800 V1/V2 comparison passed.
+- [x] `v2` remains independent; no PR or merge to the frozen V1 `main` branch
+  was created.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
