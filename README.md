@@ -46,6 +46,9 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - V1 升级型双地图：`react-globe.gl` 3D 地球与 DeckGL 2D 战术视图只读取
   `trusted-insight-map-v1`；点、线和区域必须由冻结 Schema 字段、抽取引用、
   当前 ELIGIBLE 评估与可重放 L2 共同证明，空库不生成装饰点。
+- M14 安全分析可视化：图表可按 Schema 中真实存在的字符串/整数维度显示最多
+  12 个冻结序列，保留输入顺序并明确点数/序列截断，不聚合、不插值、不生成缺失点；
+  可信地图支持标题/地点/摘要检索、要素类型筛选和可访问要素索引。
 - 三个真实 NHTSA 汽车面板，默认展示品牌、Tesla 2024 车型和安全评级车型。
 
 ## 快速启动
@@ -162,6 +165,11 @@ React 面板已进入无网络、无依赖、opaque-origin、250 ms 执行上限
 真实库 `alembic check` 无漂移，最近服务日志无 error/exception/fatal。最终
 1440×800 V1/V2 同尺寸驾驶舱与 AI 研究截图、390×844 响应式门禁均通过；
 `v2` 保持独立发布，未创建合并到 `main` 的 PR。
+
+同日 M14 安全分析可视化：全新隔离 PostgreSQL 从零迁移到 `0013`，完整后端
+套件 72/72 通过；前端 typecheck/build 与生产依赖 0 漏洞审计通过。真实空地图、
+隔离非空地图和多序列图表均完成桌面/390px 浏览器验收，控制台无 warning/error，
+真实数据库未写入测试要素。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

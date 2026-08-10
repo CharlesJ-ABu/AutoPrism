@@ -69,9 +69,9 @@ M1–M5 screenshots were not reused as current acceptance evidence.
   observations and their digest were unchanged, with zero inferred M7 rows.
 - [x] Desktop/mobile conversion-workspace smoke passed with no horizontal
   overflow and no browser console warning/error.
-- [x] Safe UI DSL chart/timeline contracts reject invalid fields, units,
-  unsupported properties and multi-series declarations; the complete backend
-  suite remains 55/55.
+- [x] M8 safe chart/timeline contracts reject invalid fields, units and unknown
+  properties; its original single-series boundary remained fail-closed until
+  the separately validated M14 grouping contract.
 - [x] Non-empty chart/timeline rendering passed desktop and 390×844 browser
   smoke using only the isolated integration database. Compose was restored to
   the real one-dashboard database after the check.
@@ -119,6 +119,13 @@ M1–M5 screenshots were not reused as current acceptance evidence.
   72/72 backend tests, frontend build/audit and desktop/390px gates passed.
 - [x] M13 final real-database drift check, six-service Compose health, eight
   core API reads, recent error-log scan and 1440×800 V1/V2 comparison passed.
+- [x] M14 limits multi-series charts to a real Schema string/integer field,
+  2–12 series and 2–200 total points; truncation is disclosed and no transform,
+  interpolation or missing-value generation is available.
+- [x] Trusted-map search/type filters and the accessible feature index operate
+  only on current replayed API features and preserve an honest no-match state.
+- [x] M14 fresh zero-to-head migration, 72/72 database suite, frontend build/
+  audit and real-empty plus isolated-nonempty desktop/390px browser gates passed.
 - [x] `v2` remains independent; no PR or merge to the frozen V1 `main` branch
   was created.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
@@ -158,16 +165,16 @@ insight.
   geography remain unavailable; current code rejects rather than approximates them.
 - Manual revisions remain ineligible until an evidence-bound human-attestation
   contract can be replayed.
-- Safe UI DSL supports stack, metric, table, bounded single-series chart,
-  evidence-date timeline and provenance. Map and multi-series panel nodes are
-  still unavailable. Custom React runs only under the empty-dependency local
-  sandbox; third-party packages and multi-tenant execution remain unavailable.
+- Safe UI DSL supports stack, metric, table, bounded single-/multi-series chart,
+  evidence-date timeline and provenance. A general panel-level map remains
+  unavailable. Custom React runs only under the empty-dependency local sandbox;
+  third-party packages and multi-tenant execution remain unavailable.
 - L2 is a deterministic stored-input evidence summary, not predictive or
   externally augmented analysis.
 - General panel-level `map` remains outside the safe UI DSL; the implemented
   Shell map has its own `trusted-insight-map-v1` contract.
-- Multi-series charts remain outside the current safe contract; unsupported
-  declarations are rejected rather than silently rendered as one series.
+- Multi-axis, mixed-unit and calculated/aggregated chart series remain outside
+  the safe contract; unsupported declarations are rejected rather than coerced.
 
 None of these limitations is represented as complete in the UI or release
 record.

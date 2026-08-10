@@ -214,6 +214,11 @@ byte with immutable L2 output. The 3D globe and 2D tactical client consume only
 this read model. No reference-dataset feature qualifies today, so its visible
 empty state is correct rather than an incomplete demo.
 
+M14 adds only a client read projection over that response: title/label/summary
+search, display-type filtering and a selectable feature index. The original
+feature objects, Trust status, map statistics and immutable L2 rows are not
+rewritten; zero matches is a filter state, not a claim that history vanished.
+
 ## Runtime topology
 
 ```text
@@ -242,7 +247,11 @@ A saved `DashboardVersion` is append-only. Its child `PanelVersion` freezes:
 - extraction instructions, prompt version, model settings, and source-pool binding.
 
 The current UI renders the safe `metric`, `table`, `chart`, `timeline` and
-`provenance` subset. A `custom_react` version must freeze source, SHA-256,
+`provenance` subset. A chart may group one shared numeric Y field by a real
+Schema string/integer field, with 2–12 series and 2–200 total stored points.
+The renderer preserves first-occurrence/input ordering, discloses truncation
+and has no aggregation, interpolation or calculated-series authority. A
+`custom_react` version must freeze source, SHA-256,
 `custom-react-sandbox-v1` and an empty dependency list. The browser compiles in
 a worker and executes in a second worker inside an opaque-origin sandboxed
 iframe. Network/import APIs are disabled, only a safe virtual DOM allowlist is

@@ -797,6 +797,42 @@ def validate_ui_dsl(
                                     "numeric chart axis requires x-unit or x-unitless",
                                 )
                             )
+                series_field = node.get("series_field")
+                if series_field is not None:
+                    series_definition = (
+                        item_properties.get(series_field)
+                        if isinstance(series_field, str)
+                        else None
+                    )
+                    if (
+                        not isinstance(series_definition, dict)
+                        or series_definition.get("type") not in {"string", "integer"}
+                    ):
+                        issues.append(
+                            SchemaIssue(
+                                f"{path}.series_field",
+                                "must name a string or integer array-item field",
+                            )
+                        )
+                max_series = node.get("max_series", 6)
+                if (
+                    isinstance(max_series, bool)
+                    or not isinstance(max_series, int)
+                    or not 2 <= max_series <= 12
+                ):
+                    issues.append(
+                        SchemaIssue(
+                            f"{path}.max_series",
+                            "must be an integer from 2 to 12",
+                        )
+                    )
+                if series_field is None and "max_series" in node:
+                    issues.append(
+                        SchemaIssue(
+                            f"{path}.max_series",
+                            "requires series_field",
+                        )
+                    )
                 max_points = node.get("max_points", 80)
                 if (
                     isinstance(max_points, bool)
@@ -811,7 +847,7 @@ def validate_ui_dsl(
                     )
                 if set(node) - {
                     "type", "field", "variant", "x_field", "y_field",
-                    "label", "max_points",
+                    "series_field", "label", "max_points", "max_series",
                 }:
                     issues.append(
                         SchemaIssue(path, "chart contains unsupported properties")

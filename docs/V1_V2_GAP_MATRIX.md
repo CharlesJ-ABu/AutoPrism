@@ -46,8 +46,9 @@ retained to show the original gap and must not be read as current M6 status.
   default uncertainty or caller-supplied rates.
 - New 1440×800 V1/V2 and 390×844 V2 baselines, console, responsive and
   visual/interaction smoke passed on the current bundle.
-- The safe UI DSL now validates and renders bounded single-series charts and
-  evidence-date timelines without synthetic points or placeholder events.
+- The safe UI DSL now validates and renders bounded single-/multi-series charts
+  and evidence-date timelines without aggregation, synthetic points or
+  placeholder events. Trusted-map results also have local search/type filters.
 - Google source discovery now freezes credential-free normalized candidates;
   every result remains visibly unregistered until a human completes the trust
   and compliance registration form.
@@ -82,10 +83,13 @@ retained to show the original gap and must not be read as current M6 status.
 | M6 Exact lineage and trust replay | v3 input manifest, normalized claim evidence, exact origins, three-axis validation and dynamic peer replay | `0005`, fresh/populated gates, 6/3/3 audit, 39/39 backend plus 2026-08-10 current visual closeout | Complete |
 | M6.1 Trusted dual insight map | Schema-bound geography, immutable coordinate citations, current-only L2 map contract and 3D/2D engines | `0006`, fresh/populated gates, 44/44 backend, frontend/Compose/browser baselines | Complete |
 | M7 Units/currency/error semantics | Deterministic conversions, precision/rounding, error propagation and trusted calculation policy | Replay, migration, API/Trust/L2 and browser evidence | Complete; dimensional multiply/divide and triangular FX explicitly deferred |
-| M8 Safe visual DSL | Schema-bound single-series line/bar/area charts and evidence-date timelines with truthful empty states | 55/55 backend, frontend type/build, isolated non-empty desktop/mobile smoke | Complete; multi-series/map remain explicitly unsupported |
+| M8 Safe visual DSL | Schema-bound single-series line/bar/area charts and evidence-date timelines with truthful empty states | 55/55 backend, frontend type/build, isolated non-empty desktop/mobile smoke | Complete; later extended by M14 |
 | M9 Compliant discovery | Ephemeral Google credentials, immutable normalized candidates and manual registration gate | `0008`/`0009`, fresh/cycle/populated gates, 59/59 backend, frontend audit/build and responsive smoke | Complete; no saved key and no automatic collection |
 | M10 Refresh scheduler | Authorization-attested interval versions, idempotent current-bucket dispatch and immutable outcomes | `0010`, fresh/cycle/populated gates, 62/62 backend, six-service Compose and responsive smoke | Complete for fixed intervals; cron/shared domain budgets deferred |
-| M11 LLM research orchestration | Frozen source-inventory planning, bounded discovery/collection proposals and per-action authorization | `0012`, 67/67 backend, real/isolated responsive browser gates, unchanged real data | Complete for planning/tool routing; evidence-bound narrative interpretation remains M12 |
+| M11 LLM research orchestration | Frozen source-inventory planning, bounded discovery/collection proposals and per-action authorization | `0012`, 67/67 backend, real/isolated responsive browser gates, unchanged real data | Complete |
+| M12 Interpretation/runtime | Evidence-bound narrative plus opaque-origin, no-network custom runtime | `0013`, 72/72 backend, runtime security and responsive browser gates | Complete |
+| M13 Release closeout | Full regression, same-size V1/V2 comparison and v2-only handoff | Compose/API/log/drift/browser gates | Complete |
+| M14 Safe analysis visualization | Schema-bound 2–12 series charts and trusted-map search/type/index navigation | 72/72 backend, frontend build/audit, real-empty and isolated-nonempty browser gates | Complete; panel-map and mixed-unit axes remain unsupported |
 
 ## Feature acceptance ledger
 
@@ -98,7 +102,7 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Main dashboard list and switch | done | done | partial | partial |
 | Create main dashboard | done | done | partial | partial |
 | LLM child-panel design | done | done | partial | partial |
-| JSON Schema and UI DSL | done with field-bound chart/timeline validation | structured editor plus safe renderers | done | done for current safe subset |
+| JSON Schema and UI DSL | done with field-bound multi-series chart/timeline validation | structured editor plus safe renderers | done | done for current safe subset |
 | Manual edit and save new version | done | done | done | done |
 | Freeze component/Schema/prompt/model | done | explicit draft/publish workflow | done | done |
 | Import/collection | done for direct URL/API sources | connected with compliance gate | done | done for supported collectors |
@@ -112,10 +116,10 @@ has a real path with missing required behavior; **missing** has no usable path;
 | Deterministic calculations | bounded Decimal engine, normalized trusted inputs and replay records | view and run eligible plans | done | add/subtract/percent/weighted-average eligible after full replay |
 | Unit conversion registry | fixed versioned dimension/semantic registry | compatible-target selection and conversion history | done | no free aliases or caller factors |
 | L2 stored-data-only analysis | normalized eligible inputs and immutable hash | connected with explicit unavailable state | done | done for deterministic evidence summary |
-| V1-style insight map | immutable `geo-scope-v1` plus current `trusted-insight-map-v1` replay | real 3D globe/2D tactical engines and honest states | done | done; reference data correctly has zero qualified features |
+| V1-style insight map | immutable `geo-scope-v1` plus current `trusted-insight-map-v1` replay | real 3D globe/2D tactical engines, search/type filters, accessible index and honest states | done | done; reference data correctly has zero qualified features |
 | Authenticated collection | deferred | explicit TODO required | policy tests only | deferred |
 | Encrypted credential vault | SaaS-only deferred | explicit TODO required | missing | deferred |
-| Isolated custom React runtime | source storage only | explicit TODO required | hash test only | deferred |
+| Isolated custom React runtime | frozen hash/contract validation | opaque-origin worker sandbox, no network/imports and safe vDOM | security/browser tests | done for empty dependency allowlist |
 
 ## Historical baseline findings and resolution
 

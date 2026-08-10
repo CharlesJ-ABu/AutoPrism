@@ -1,12 +1,14 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Crosshair,
   FileSearch,
   Globe2,
+  ListFilter,
   LoaderCircle,
   Map,
   RefreshCw,
+  Search,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -22,6 +24,7 @@ const TrustedGlobeMap = lazy(() => import('./TrustedGlobeMap'));
 const TrustedTacticalMap = lazy(() => import('./TrustedTacticalMap'));
 
 type MapMode = 'globe' | 'tactical';
+type MapDisplayType = TrustedMapFeature['display_type'];
 
 interface SituationMapProps {
   response?: TrustedMapResponse;
@@ -53,28 +56,59 @@ export function SituationMap({
   const [mode, setMode] = useState<MapMode>('globe');
   const [mapStyle, setMapStyle] = useState<MapStyle>('cyber');
   const [selected, setSelected] = useState<TrustedMapFeature>();
+  const [query, setQuery] = useState('');
+  const [displayType, setDisplayType] = useState<'ALL' | MapDisplayType>('ALL');
+  const [indexOpen, setIndexOpen] = useState(false);
   const features = response?.features ?? [];
   const stats = response?.stats;
+  const filtering = displayType !== 'ALL' || query.trim().length > 0;
+  const availableTypes = useMemo(
+    () => [...new Set(features.map((feature) => feature.display_type))].sort(),
+    [features],
+  );
+  const filteredFeatures = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    return features.filter((feature) => (
+      (displayType === 'ALL' || feature.display_type === displayType)
+      && (
+        !needle
+        || feature.title.toLocaleLowerCase().includes(needle)
+        || feature.label.toLocaleLowerCase().includes(needle)
+        || feature.summary.toLocaleLowerCase().includes(needle)
+      )
+    ));
+  }, [displayType, features, query]);
 
   useEffect(() => {
-    if (selected && !features.some((feature) => feature.id === selected.id)) {
+    if (selected && !filteredFeatures.some((feature) => feature.id === selected.id)) {
       setSelected(undefined);
     }
-  }, [features, selected]);
+  }, [filteredFeatures, selected]);
+
+  useEffect(() => {
+    if (displayType !== 'ALL' && !availableTypes.includes(displayType)) {
+      setDisplayType('ALL');
+    }
+  }, [availableTypes, displayType]);
+
+  const selectFeature = (feature: TrustedMapFeature) => {
+    setSelected(feature);
+    setIndexOpen(false);
+  };
 
   const engine = mode === 'globe' ? (
     <TrustedGlobeMap
-      features={features}
+      features={filteredFeatures}
       mapStyle={mapStyle}
       selectedId={selected?.id}
-      onSelect={setSelected}
+      onSelect={selectFeature}
     />
   ) : (
     <TrustedTacticalMap
-      features={features}
+      features={filteredFeatures}
       mapStyle={mapStyle}
       selectedId={selected?.id}
-      onSelect={setSelected}
+      onSelect={selectFeature}
     />
   );
 
@@ -108,7 +142,7 @@ export function SituationMap({
         </div>
       </header>
 
-      <div className="trusted-map-stage" aria-label={`当前可信地图要素 ${features.length} 个`}>
+      <div className="trusted-map-stage" aria-label={`当前显示可信地图要素 ${filteredFeatures.length} 个，共 ${features.length} 个`}>
         <Suspense fallback={(
           <div className="map-engine-loading"><LoaderCircle className="spin" /> 正在初始化地图引擎…</div>
         )}>
@@ -122,6 +156,16 @@ export function SituationMap({
             <span>只接受 geo-scope-v1 坐标证据与当前 ELIGIBLE 的 L2 输入；系统不会推断或散布装饰点位。</span>
           </div>
         )}
+        {!loading && !error && features.length > 0 && filteredFeatures.length === 0 && (
+          <div className="map-empty-overlay">
+            <Search size={25} />
+            <strong>没有符合当前筛选的可信洞察</strong>
+            <span>筛选不会改变或隐藏底层历史；清除条件即可恢复全部 {features.length} 个当前可信要素。</span>
+            <Button variant="secondary" onClick={() => { setQuery(''); setDisplayType('ALL'); }}>
+              清除筛选
+            </Button>
+          </div>
+        )}
         {loading && (
           <div className="map-empty-overlay"><LoaderCircle className="spin" /><strong>正在重放可信地图契约</strong></div>
         )}
@@ -132,6 +176,55 @@ export function SituationMap({
             <span>{error}</span>
             <Button variant="secondary" onClick={onRetry}><RefreshCw size={13} /> 重试</Button>
           </div>
+        )}
+
+        {!loading && !error && features.length > 0 && (
+          <div className="map-data-controls" aria-label="可信地图筛选">
+            <label>
+              <Search size={13} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="检索标题、地点或摘要"
+                aria-label="检索可信地图要素"
+              />
+            </label>
+            <select
+              value={displayType}
+              onChange={(event) => setDisplayType(event.target.value as 'ALL' | MapDisplayType)}
+              aria-label="按地图要素类型筛选"
+            >
+              <option value="ALL">全部类型</option>
+              {availableTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+            <button
+              className={indexOpen ? 'active' : ''}
+              onClick={() => setIndexOpen((value) => !value)}
+              aria-expanded={indexOpen}
+            >
+              <ListFilter size={13} /> 索引 {filteredFeatures.length}
+            </button>
+          </div>
+        )}
+
+        {indexOpen && filteredFeatures.length > 0 && (
+          <aside className="map-feature-index" aria-label="可信地图要素索引">
+            <header>
+              <span><ListFilter size={12} /> CURRENT FEATURE INDEX</span>
+              <button onClick={() => setIndexOpen(false)} aria-label="关闭要素索引"><X size={13} /></button>
+            </header>
+            <ol>
+              {filteredFeatures.map((feature) => (
+                <li key={feature.id}>
+                  <button onClick={() => selectFeature(feature)}>
+                    <span>{feature.display_type}</span>
+                    <strong>{feature.title}</strong>
+                    <small>{feature.label} · {feature.observation_ids.length} 个输入观测</small>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </aside>
         )}
 
         {selected && (
@@ -162,11 +255,13 @@ export function SituationMap({
       <div className="map-readout trusted-map-readout">
         <Crosshair size={15} />
         <div>
-          <strong>{features.length} CURRENT TRUSTED FEATURES</strong>
+          <strong>{filteredFeatures.length} / {features.length} CURRENT TRUSTED FEATURES</strong>
           <span>{stats ? `${stats.current_insights} 个当前洞察 · ${stats.without_geography} 个缺少坐标 · ${stats.stale_or_invalid_insights} 个已失效` : '等待可信地图响应'}</span>
         </div>
-        <Status tone={features.length ? 'ok' : 'neutral'}>
-          <ShieldCheck size={12} /> {features.length ? 'REPLAYED' : 'EMPTY BY CONTRACT'}
+        <Status tone={filteredFeatures.length ? 'ok' : 'neutral'}>
+          <ShieldCheck size={12} /> {features.length
+            ? filtering ? 'FILTERED REPLAY' : 'REPLAYED'
+            : 'EMPTY BY CONTRACT'}
         </Status>
       </div>
     </Panel>

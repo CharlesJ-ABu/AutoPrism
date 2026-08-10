@@ -13,8 +13,8 @@ INFO/validation/review workflows, append-only dynamically replayed trust
 eligibility and stored-input-only deterministic L2. See
 [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for the open visual gate and
 known limitations. The trusted-map follow-up and the bounded numeric M7
-milestone are complete. The safe UI DSL now includes bounded single-series
-charts and evidence-date timelines. M9 adds credential-ephemeral Google source
+milestone are complete. The safe UI DSL now includes bounded single- and
+multi-series charts plus evidence-date timelines. M9 adds credential-ephemeral Google source
 discovery with immutable candidate history and a mandatory manual registration
 gate. M10 adds append-only refresh-policy versions, immutable dispatch history
 and an independent Scheduler service. M11 adds an LLM research orchestrator
@@ -171,7 +171,9 @@ Title-to-proposal, editable structured JSON, immutable save, dashboard
 switching, and metric/table/chart/timeline/provenance rendering are
 operational. The isolated `custom-react-sandbox-v1` runtime is now operational
 with an empty dependency contract, opaque origin, no network, safe output and
-hard execution limits. Additional allowlisted visual types remain pending.
+hard execution limits. Additional allowlisted visual types remain pending;
+M14 adds the first bounded multi-series contract without expanding data or
+calculation authority.
 
 ## M12 — isolated runtime and evidence-bound interpretation (complete)
 
@@ -196,6 +198,25 @@ upgrade and desktop/mobile/security browser gates pass. M13 closeout is recorded
 
 Exit: all checks pass and the remaining items are explicitly deferred product
 scope, not hidden release blockers.
+
+## M14 — Safe multi-series analysis and map navigation (complete)
+
+- Added optional `series_field` and bounded `max_series` to the chart DSL.
+  The series field must be a real string/integer array-item property and the
+  server rejects unknown fields, invalid limits and `max_series` without a
+  grouping field.
+- Rendered line, area and grouped-bar series from stored row order with one
+  shared Schema-bound numeric axis. Point and series limits are explicit;
+  omitted rows are disclosed and are never aggregated, interpolated or filled.
+- Added local filtering of already replayed `trusted-insight-map-v1` features
+  by title, label, summary and display type, plus a keyboard-accessible feature
+  index and honest no-match state. Filtering never changes Trust or L2 history.
+- Passed a fresh zero-to-`0013` database gate and the 72/72 full suite, frontend
+  type/build/audit, real-empty production smoke and isolated non-empty desktop/
+  390px interaction smoke without writing synthetic features to the real DB.
+
+Exit: analysts can compare bounded real series and navigate dense trusted map
+results without introducing a transform, calculation, geocoding or fake-data path.
 
 ## M6 — Exact lineage and trust replay (complete)
 

@@ -621,6 +621,8 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                         "variant": "line",
                                         "x_field": "reported_at",
                                         "y_field": "value",
+                                        "series_field": "label",
+                                        "max_series": 4,
                                     },
                                     {
                                         "type": "timeline",
@@ -667,6 +669,10 @@ class V2ApiIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(detail["panels"][0]["key"], "registrations")
             self.assertIn("data_schema", detail["panels"][0])
             self.assertIn("ui_dsl", detail["panels"][0])
+            self.assertEqual(
+                detail["panels"][0]["ui_dsl"]["children"][1]["series_field"],
+                "label",
+            )
 
             view_response = await client.get(
                 f"/api/v2/dashboards/{dashboard['id']}/versions/1/view"

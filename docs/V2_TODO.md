@@ -19,6 +19,10 @@ M13 release regression is complete: the final database/static/Compose/API/
 browser/log gates and same-size V1/V2 visual comparison passed. Further work
 below is deliberate post-V2 or SaaS scope.
 
+M14 is complete: safe charts accept a bounded Schema-backed grouping field and
+the trusted Shell map now has local search, type filters and an accessible
+feature index. Neither path adds calculation, geocoding or trust authority.
+
 ## M7 follow-ups
 
 M7's fixed registry, bounded Decimal engine, direct/inverse evidence-bound FX,
@@ -40,9 +44,9 @@ is deliberately separate:
   credential, normalized URL, immutable result and manual-registration boundary.
 - Encrypted saved search-provider credentials remain SaaS-only; local V2 asks
   for the Google API key and CX on each discovery request.
-- Expand safe UI DSL beyond the implemented metric/table/single-series-chart/
-  timeline/provenance subset to map, heatmap, radar, ticker, network and
-  evidence-safe multi-series components.
+- Expand safe UI DSL beyond the implemented metric/table/bounded multi-series-
+  chart/timeline/provenance subset to panel map, heatmap, radar, ticker and
+  network components. Mixed-unit/multi-axis charts require a separate contract.
 - Expand the custom runtime beyond its current empty dependency allowlist only
   after each library has a reviewed immutable version and security contract.
 - Source-pool editing and deletion (creation/registration/collection are connected).

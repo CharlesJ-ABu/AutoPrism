@@ -2,6 +2,39 @@
 
 Last full validation: 2026-08-10 (Asia/Shanghai).
 
+## M14 safe multi-series and map-navigation result
+
+A new disposable database, `autoprism_v2_m14_gate_20260810`, upgraded from zero
+through `0013_v2_evidence_interpretations`. The complete database-enabled V2
+suite passed 72/72, including an API round trip that freezes and reads back a
+Schema-bound `series_field`/`max_series` chart. Focused contract tests reject a
+missing/non-scalar series field and `max_series` without a grouping field.
+
+Frontend typecheck and production build passed with 2,891 transformed modules;
+the final main bundle is 280.34 kB (83.83 kB gzip), while both map engines remain lazy
+chunks. Production dependency audit reported zero vulnerabilities.
+
+Browser verification used the rebuilt production Compose bundle for the real
+zero-feature state and sidebar/drawer regression, then a temporary isolated
+component harness for non-empty visual behavior. The harness was explicitly
+labeled QA, did not call production APIs, was removed after testing and wrote
+nothing to either database. Verified behavior:
+
+- stored multi-series bars rendered 6 real points across 2 series with no
+  aggregation or missing-point synthesis;
+- display-type filtering reduced 3 replayed features to the exact FLOW item;
+- the accessible index opened that item and exposed its stored geometry/
+  observation count; no-match search and clear-to-restore both worked;
+- production and QA console warning/error counts were zero;
+- at 390 px, document width remained 384 px, the chart was 330 px wide, the
+  map controls/index stayed inside the viewport, drawer scroll lock hid the
+  sidebar and closing restored it.
+
+Visual records are `v2-m14-visual-dsl-map-1434x797.jpg`,
+`v2-m14-mobile-drawer-390x844.jpg`,
+`v2-m14-isolated-nonempty-1274x1320.jpg` and
+`v2-m14-isolated-nonempty-384x1243.jpg`.
+
 ## M8 safe chart/timeline milestone result
 
 The full disposable-PostgreSQL backend suite remains 55/55 after extending the

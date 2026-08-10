@@ -155,9 +155,11 @@ Schema.
 
 ### `chart`
 
-Displays a single real series from an array field as a line, bar or area chart.
-The Y field must be numeric and declare exactly one of `x-unit` or
-`x-unitless: true`. The X field must be a string or numeric item property.
+Displays one or more real series from an array field as a line, bar or area
+chart. The Y field must be numeric and declare exactly one of `x-unit` or
+`x-unitless: true`. The X field must be a string or numeric item property. An
+optional `series_field` must name a real string or integer item property;
+`max_series` is valid only with it and is bounded to 2–12.
 
 ```json
 {
@@ -166,15 +168,19 @@ The Y field must be numeric and declare exactly one of `x-unit` or
   "variant": "line",
   "x_field": "reported_at",
   "y_field": "value",
+  "series_field": "market",
+  "max_series": 6,
   "label": "已报告数值",
   "max_points": 80
 }
 ```
 
-`max_points` is bounded to 2–200. The renderer preserves stored row order,
-rejects non-finite values and reports an empty state rather than interpolating,
-extrapolating or adding trend points. Multi-series grouping is not accepted in
-this contract version.
+`max_points` is a total real-point bound of 2–200. Series are selected in first
+stored-row occurrence order and the renderer discloses any point/series values
+outside the frozen limits. Identical X values align across series; grouped bars
+remain separate observations. The renderer performs no aggregation, sorting,
+interpolation, extrapolation or missing-point generation. Every series shares
+the same Schema-bound Y field and therefore the same unit/currency semantics.
 
 ### `timeline`
 
@@ -216,8 +222,8 @@ or elevate trust.
 
 ## Unsupported nodes
 
-`map`, `heatmap`, `radar`, `ticker`, `network` and multi-series charts remain
-explicitly unavailable until they have:
+`map`, `heatmap`, `radar`, `ticker` and `network` remain explicitly unavailable
+until they have:
 
 - a versioned data contract;
 - deterministic renderer behavior;

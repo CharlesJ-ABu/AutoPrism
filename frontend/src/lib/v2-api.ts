@@ -602,7 +602,9 @@ export interface UiDslNode {
   variant?: 'line' | 'bar' | 'area';
   x_field?: string;
   y_field?: string;
+  series_field?: string;
   max_points?: number;
+  max_series?: number;
   time_field?: string;
   title_field?: string;
   value_field?: string;

@@ -137,6 +137,7 @@ class PanelSchemaTests(unittest.TestCase):
                                 "type": "string",
                                 "format": "date-time",
                             },
+                            "market": {"type": "string"},
                             "value": {
                                 "type": "number",
                                 "x-unit": "vehicle",
@@ -158,6 +159,8 @@ class PanelSchemaTests(unittest.TestCase):
                     "variant": "line",
                     "x_field": "reported_at",
                     "y_field": "value",
+                    "series_field": "market",
+                    "max_series": 4,
                     "max_points": 40,
                 },
                 {
@@ -182,7 +185,7 @@ class PanelSchemaTests(unittest.TestCase):
             },
         )
         self.assertTrue(any("chart axis" in item.message for item in issues))
-        self.assertTrue(
+        self.assertEqual(
             validate_ui_dsl(
                 schema,
                 {
@@ -192,6 +195,50 @@ class PanelSchemaTests(unittest.TestCase):
                     "x_field": "reported_at",
                     "y_field": "value",
                     "series_field": "name",
+                    "max_series": 3,
+                },
+            ),
+            (),
+        )
+        self.assertTrue(
+            validate_ui_dsl(
+                schema,
+                {
+                    "type": "chart",
+                    "field": "records",
+                    "variant": "line",
+                    "x_field": "reported_at",
+                    "y_field": "value",
+                    "series_field": "missing",
+                },
+            )
+        )
+        for invalid_limit in (1, 13, True):
+            with self.subTest(max_series=invalid_limit):
+                self.assertTrue(
+                    validate_ui_dsl(
+                        schema,
+                        {
+                            "type": "chart",
+                            "field": "records",
+                            "variant": "line",
+                            "x_field": "reported_at",
+                            "y_field": "value",
+                            "series_field": "market",
+                            "max_series": invalid_limit,
+                        },
+                    )
+                )
+        self.assertTrue(
+            validate_ui_dsl(
+                schema,
+                {
+                    "type": "chart",
+                    "field": "records",
+                    "variant": "line",
+                    "x_field": "reported_at",
+                    "y_field": "value",
+                    "max_series": 3,
                 },
             )
         )

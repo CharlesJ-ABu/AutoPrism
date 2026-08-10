@@ -5,6 +5,22 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M14 — safe multi-series analysis and trusted-map navigation (2026-08-10)
+
+- Extended the safe chart DSL with optional Schema-bound `series_field` and a
+  2–12 `max_series` bound. Invalid/missing grouping fields, unsupported limits
+  and standalone `max_series` declarations fail closed at version save.
+- Added deterministic multi-series line, area and grouped-bar rendering from
+  stored row order. The renderer discloses truncation and never aggregates,
+  interpolates or creates missing points.
+- Added client-side search, display-type filtering, no-match recovery and a
+  keyboard-accessible index for already replayed trusted map features. These
+  controls cannot create, geocode, modify or promote a feature.
+- Passed a fresh zero-to-head disposable database and the 72/72 suite, frontend
+  type/build and zero-vulnerability audit. Real-empty plus isolated non-empty
+  desktop/390px browser gates had no console errors or horizontal overflow;
+  no QA feature was written to the real database.
+
 ### M13 — V2 release regression and handoff (2026-08-10)
 
 - Re-ran the 72/72 disposable-PostgreSQL suite, final frontend type/build,
