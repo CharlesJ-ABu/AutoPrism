@@ -103,6 +103,12 @@ and creates no plans/actions during upgrade. Reconcile observation/dashboard
 counts and verify the four research tables are empty on first upgrade. A
 populated M11 database refuses downgrade rather than erase research history.
 
+Migration `0013_v2_evidence_interpretations` only adds immutable interpretation
+and ordered-input tables. Before a populated upgrade, back up PostgreSQL and
+reconcile the observation/dashboard count and observation-ID digest. The new
+tables must begin empty; no narrative or trusted input is inferred. Downgrade is
+allowed only on a disposable database with no interpretation history.
+
 ### M6 lineage audit
 
 ```bash

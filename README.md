@@ -152,6 +152,12 @@ downgrade/re-upgrade、漂移检查与真实备份升级通过；67/67 后端测
 typecheck/build、0 漏洞审计、真实与隔离数据浏览器验收通过。真实 6 条观测摘要、
 1 个主面板保持不变，研究表从空状态开始，没有回填或生成任何研究事实。
 
+同日 M12 验证记录：迁移 `0013_v2_evidence_interpretations` 的 fresh、空库
+downgrade/re-upgrade 与漂移检查通过；72/72 后端测试、前端 typecheck/build、
+0 漏洞审计和真实库备份升级通过。证据绑定模型解读只接受动态重放后仍
+ELIGIBLE 的观测，冻结证据/评估/提示词/输出哈希且不改变 trust state。自定义
+React 面板已进入无网络、无依赖、opaque-origin、250 ms 执行上限的隔离运行时。
+
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和
 [待办](docs/V2_TODO.md)。

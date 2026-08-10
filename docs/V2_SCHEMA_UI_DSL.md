@@ -232,11 +232,18 @@ unsupported until the richer DSL milestone.
 
 ## Custom React
 
-Panel versions may retain `custom_react` source and its SHA-256 for future
-portability, but the V2 client does not compile or execute it. Enabling it
-requires an isolated origin/runtime, dependency allowlist, CSP, resource limits
-and zero ambient credentials. Until then, the version editor shows a visible
-unavailable notice.
+Panel versions may use `custom_react` only with frozen source, SHA-256,
+`visualization_contract.runtime = "custom-react-sandbox-v1"` and an empty
+dependency array. Imports, dynamic imports and `require` are rejected.
+
+The client verifies the source hash, compiles in a dedicated worker, and sends
+the result to a worker inside a sandboxed iframe with an opaque origin and CSP
+`connect-src 'none'`. Network and nested-worker APIs are disabled. Output is
+serialized through an allowlist of text and basic semantic/table elements;
+attributes, scripts, event handlers and raw HTML never cross into the host DOM.
+Compilation has a separate cold-start budget; component execution remains
+limited to 250 ms plus depth/node/text quotas. The runtime is presentation-only
+and cannot upgrade input trust state.
 
 ## Version lifecycle
 

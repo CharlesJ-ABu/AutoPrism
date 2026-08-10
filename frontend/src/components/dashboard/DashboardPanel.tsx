@@ -5,6 +5,7 @@ import type { PanelView } from '../../lib/v2-api';
 import { Status } from '../ui';
 import { SafeChart } from './SafeChart';
 import { SafeTimeline } from './SafeTimeline';
+import { CustomReactRuntime } from './CustomReactRuntime';
 
 const flattenDsl = (node: PanelView['ui_dsl']): PanelView['ui_dsl'][] => (
   node.type === 'stack'
@@ -58,7 +59,9 @@ export function DashboardPanel({
           证据终端 <ChevronRight size={14} />
         </button>
       </div>
-      {metricNode && <div className="metric-row">
+      {panel.template_kind === 'custom_react' ? (
+        <CustomReactRuntime panel={panel} />
+      ) : metricNode && <div className="metric-row">
         <div className="metric-value">
           {metricValue === undefined || metricValue === null
             ? '—'
@@ -77,21 +80,21 @@ export function DashboardPanel({
           {valid ? 'UNVERIFIED DATA' : panel.extraction ? 'OUTPUT INVALID' : 'NO EXTRACTION'}
         </Status>
       </div>}
-      {chartNodes.map((node, index) => (
+      {panel.template_kind === 'ui_dsl' && chartNodes.map((node, index) => (
         <SafeChart
           key={`chart-${node.field}-${index}`}
           node={node}
           rows={objectRows(node.field ? panel.data?.[node.field] : undefined)}
         />
       ))}
-      {timelineNodes.map((node, index) => (
+      {panel.template_kind === 'ui_dsl' && timelineNodes.map((node, index) => (
         <SafeTimeline
           key={`timeline-${node.field}-${index}`}
           node={node}
           rows={objectRows(node.field ? panel.data?.[node.field] : undefined)}
         />
       ))}
-      {tableNode && visibleRecords.length > 0 ? (
+      {panel.template_kind === 'ui_dsl' && tableNode && visibleRecords.length > 0 ? (
         <div className="table-wrap">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
@@ -110,7 +113,7 @@ export function DashboardPanel({
             </tbody>
           </table>
         </div>
-      ) : tableNode ? (
+      ) : panel.template_kind === 'ui_dsl' && tableNode ? (
         <div className="panel-empty">
           该冻结面板尚无结构化记录。系统不会补零或生成演示数据。
         </div>

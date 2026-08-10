@@ -241,9 +241,18 @@ A saved `DashboardVersion` is append-only. Its child `PanelVersion` freezes:
 - safe UI DSL, or custom React source and its SHA-256;
 - extraction instructions, prompt version, model settings, and source-pool binding.
 
-The current UI renders the safe `metric`, `table`, and `provenance` subset.
-Custom React source can be stored but isolated compilation and runtime remain a
-documented follow-up.
+The current UI renders the safe `metric`, `table`, `chart`, `timeline` and
+`provenance` subset. A `custom_react` version must freeze source, SHA-256,
+`custom-react-sandbox-v1` and an empty dependency list. The browser compiles in
+a worker and executes in a second worker inside an opaque-origin sandboxed
+iframe. Network/import APIs are disabled, only a safe virtual DOM allowlist is
+returned, and untrusted execution is terminated after 250 ms.
+
+Evidence-bound model interpretation is a separate append-only narrative layer.
+It freezes ordered observation/assessment/evidence inputs, prompt and provider
+configuration hashes, and citation-bearing output. Reads dynamically recheck
+that every input assessment is still current. Narrative never mutates or
+substitutes for TrustAssessment, ValidationRun, CalculationRun or L2.
 
 The executable validation rules and examples are documented in
 [`V2_SCHEMA_UI_DSL.md`](V2_SCHEMA_UI_DSL.md). The API rejects unknown node

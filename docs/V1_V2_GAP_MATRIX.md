@@ -282,3 +282,15 @@ has a real path with missing required behavior; **missing** has no usable path;
   creation and immediate feature removal after a newer failed assessment.
 - Frontend typecheck/build and production dependency audit passed; DeckGL and
   globe chunks are lazy-loaded and the audit reported zero vulnerabilities.
+
+## M12 runtime and narrative verification record
+
+- Frozen custom React presentation now executes only under
+  `custom-react-sandbox-v1`; imports/network/unsafe DOM output fail closed and
+  infinite loops are terminated at 250 ms.
+- Model interpretation accepts only current eligible database observations,
+  freezes evidence and assessment references and exposes exact claim citations.
+  It remains visibly separate from deterministic L2 and TrustAssessment.
+- Migration `0013`, 72/72 backend tests, frontend build/audit, real backed-up
+  migration and desktop/mobile/security browser smoke passed. The remaining
+  release work is M13 regression and handoff rather than missing M12 wiring.

@@ -61,10 +61,18 @@ locator. Artifact files and PostgreSQL must be backed up together.
 
 ## Custom code
 
-The database can freeze custom React source and its hash, but V2 does not yet
-execute custom source. Do not enable execution until the isolated runtime,
-CSP, dependency allowlist, network policy, resource quotas and credential
-separation in `V2_TODO.md` are complete.
+Custom React execution is limited to `custom-react-sandbox-v1`: frozen source
+hash, empty dependency allowlist, import rejection, opaque-origin sandboxed
+iframe, restrictive CSP, no network or nested workers, worker termination at
+250 ms and safe virtual-DOM output. No cookies, storage credentials, DOM nodes
+or executable attributes are supplied. This is a local presentation runtime,
+not a general package runner or a SaaS-grade multi-tenant execution service.
+
+Evidence-bound model interpretation uses request-only credentials. The stored
+record contains a provider-configuration hash, never the key. Only current
+eligible database observations are accepted; exact observation/assessment
+citations and numeric-copy rules are post-validated. Model prose is visibly
+labelled narrative and cannot write a trust decision.
 
 ## Audit performed
 

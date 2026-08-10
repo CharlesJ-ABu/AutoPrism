@@ -5,6 +5,7 @@ import {
   DatabaseZap,
   Fingerprint,
   KeyRound,
+  Quote,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -15,6 +16,8 @@ import { Button, Drawer, EmptyState, LoadingState, Status } from '../../componen
 import { formatDate, shortHash } from '../../lib/format';
 import {
   api,
+  type EvidenceInterpretation,
+  type MetricObservation,
   type ResearchAction,
   type ResearchActionState,
   type ResearchRun,
@@ -46,12 +49,20 @@ function actionPurpose(action: ResearchAction) {
 export function ResearchDrawer({ onClose }: { onClose: () => void }) {
   const [pools, setPools] = useState<SourcePool[]>([]);
   const [runs, setRuns] = useState<ResearchRun[]>([]);
+  const [trustedObservations, setTrustedObservations] = useState<MetricObservation[]>([]);
+  const [interpretations, setInterpretations] = useState<EvidenceInterpretation[]>([]);
   const [selectedRunId, setSelectedRunId] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
   const [authorized, setAuthorized] = useState<Record<string, boolean>>({});
   const [searchCredentials, setSearchCredentials] = useState({ api_key: '', search_engine_id: '' });
+  const [selectedObservationIds, setSelectedObservationIds] = useState<string[]>([]);
+  const [interpretationForm, setInterpretationForm] = useState({
+    title: '',
+    question: '',
+    api_key: '',
+  });
   const [form, setForm] = useState({
     source_pool_id: '',
     title: '',
@@ -72,12 +83,16 @@ export function ResearchDrawer({ onClose }: { onClose: () => void }) {
     setLoading(true);
     setError('');
     try {
-      const [nextPools, nextRuns] = await Promise.all([
+      const [nextPools, nextRuns, nextObservations, nextInterpretations] = await Promise.all([
         api.listSourcePools(),
         api.listResearchRuns(),
+        api.listTrustedObservations(),
+        api.listInterpretations(),
       ]);
       setPools(nextPools);
       setRuns(nextRuns);
+      setTrustedObservations(nextObservations);
+      setInterpretations(nextInterpretations);
       const nextRunId = preferredRunId ?? selectedRunId ?? nextRuns[0]?.id ?? '';
       setSelectedRunId(nextRunId);
       setForm((current) => ({
@@ -148,9 +163,47 @@ export function ResearchDrawer({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const createInterpretation = async () => {
+    setBusyId('interpretation');
+    setError('');
+    try {
+      const created = await api.createInterpretation({
+        title: interpretationForm.title,
+        question: interpretationForm.question,
+        observation_ids: selectedObservationIds,
+        created_by: 'local-user-self-attested',
+        provider: form.provider,
+        model: form.model,
+        ...(form.base_url.trim() ? { base_url: form.base_url.trim() } : {}),
+        ...(interpretationForm.api_key ? { api_key: interpretationForm.api_key } : {}),
+      });
+      setInterpretationForm({ title: '', question: '', api_key: '' });
+      setSelectedObservationIds([]);
+      await load(selectedRun?.id);
+      setInterpretations((current) => current.some((item) => item.id === created.id)
+        ? current
+        : [created, ...current]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '证据绑定解读生成失败');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const toggleObservation = (observationId: string) => {
+    setSelectedObservationIds((current) => current.includes(observationId)
+      ? current.filter((item) => item !== observationId)
+      : [...current, observationId]);
+  };
+
   const formValid = Boolean(
     form.source_pool_id && form.title.trim().length >= 3
     && form.objective.trim().length >= 10 && form.provider && form.model,
+  );
+  const interpretationValid = Boolean(
+    selectedObservationIds.length
+    && interpretationForm.title.trim().length >= 3
+    && interpretationForm.question.trim().length >= 10,
   );
 
   return (
@@ -189,6 +242,48 @@ export function ResearchDrawer({ onClose }: { onClose: () => void }) {
         </div>
         <p className="credential-hint">临时模型 Key 只进入本次请求，不写入研究计划、数据库或来源配置。</p>
         <Button variant="primary" disabled={!formValid || busyId === 'plan'} onClick={() => void createPlan()}><Sparkles size={14} /> {busyId === 'plan' ? '正在生成冻结计划…' : '让 LLM 制定研究计划'}</Button>
+      </section>
+
+      <section className="drawer-section interpretation-workspace">
+        <div className="drawer-section-title">
+          <h3><Quote size={13} /> 证据绑定解读</h3>
+          <Status tone="warning">MODEL NARRATIVE · NOT TRUST STATE</Status>
+        </div>
+        <p className="section-help">
+          只把当前仍通过可信策略的数据库观测交给模型。输入证据、评估 ID、提示词和输出均冻结哈希；
+          模型只能复制已引用数值，不能计算新数值，也不能把文字解读升级为可信事实。
+        </p>
+        {trustedObservations.length ? (
+          <div className="interpretation-input-list">
+            {trustedObservations.map((observation) => (
+              <label key={observation.id} className="interpretation-input">
+                <input
+                  type="checkbox"
+                  checked={selectedObservationIds.includes(observation.id)}
+                  onChange={() => toggleObservation(observation.id)}
+                />
+                <span>
+                  <strong>{observation.metric_key}</strong>
+                  <small>
+                    {String(observation.normalized_value.value)} {observation.unit ?? observation.currency ?? ''}
+                    {' · '}{shortHash(observation.id)}
+                  </small>
+                </span>
+                <Status tone="ok">CURRENT ELIGIBLE</Status>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="panel-empty">当前没有可用于模型解读的可信观测；系统不会退回未验证数据或生成示例。</div>
+        )}
+        <div className="research-form-grid interpretation-form">
+          <label className="field"><span>解读标题</span><input value={interpretationForm.title} onChange={(event) => setInterpretationForm({ ...interpretationForm, title: event.target.value })} placeholder="例如：已验证交付数据的差异解读" /></label>
+          <label className="field"><span>临时模型 API Key</span><input type="password" value={interpretationForm.api_key} onChange={(event) => setInterpretationForm({ ...interpretationForm, api_key: event.target.value })} autoComplete="off" /></label>
+          <label className="field research-span-2"><span>需要模型回答的问题</span><textarea value={interpretationForm.question} onChange={(event) => setInterpretationForm({ ...interpretationForm, question: event.target.value })} placeholder="仅根据选中的可信观测，说明可以得出什么、不能得出什么。" /></label>
+        </div>
+        <Button variant="primary" disabled={!interpretationValid || busyId === 'interpretation'} onClick={() => void createInterpretation()}>
+          <Quote size={14} /> {busyId === 'interpretation' ? '正在校验并冻结解读…' : `生成证据绑定解读 · ${selectedObservationIds.length} INPUTS`}
+        </Button>
       </section>
 
       {error && <div className="error-banner">{error}</div>}
@@ -244,6 +339,34 @@ export function ResearchDrawer({ onClose }: { onClose: () => void }) {
             </>
           )}
         </>
+      )}
+
+      {!loading && interpretations.length > 0 && (
+        <section className="drawer-section interpretation-history">
+          <div className="drawer-section-title"><h3>冻结解读历史 · {interpretations.length}</h3><Status tone="neutral">APPEND ONLY</Status></div>
+          {interpretations.map((item) => (
+            <article key={item.id} className="interpretation-card">
+              <header>
+                <div><span className="panel-key">{item.provider} / {item.model}</span><h4>{item.title}</h4></div>
+                <Status tone={!item.integrity_valid ? 'danger' : item.currently_grounded ? 'ok' : 'warning'}>
+                  {!item.integrity_valid ? 'HASH FAILED' : item.currently_grounded ? 'CURRENTLY GROUNDED' : 'HISTORICAL · INPUT STALE'}
+                </Status>
+              </header>
+              <p className="interpretation-question">{item.question}</p>
+              <p>{item.output.summary}</p>
+              <div className="interpretation-claims">
+                {item.output.claims.map((claim, index) => (
+                  <div key={`${item.id}-${index}`}>
+                    <strong>CLAIM {index + 1}</strong>
+                    <p>{claim.statement}</p>
+                    <small>{claim.observation_ids.map(shortHash).join(' · ')} · {claim.limitation}</small>
+                  </div>
+                ))}
+              </div>
+              <footer><code>INPUT {shortHash(item.input_hash)} · OUTPUT {shortHash(item.output_hash)}</code><span>{formatDate(item.created_at)}</span></footer>
+            </article>
+          ))}
+        </section>
       )}
     </Drawer>
   );

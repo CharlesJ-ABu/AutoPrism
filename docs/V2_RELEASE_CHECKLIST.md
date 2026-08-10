@@ -109,8 +109,14 @@ M1–M5 screenshots were not reused as current acceptance evidence.
   real-empty/isolated-nonempty desktop/390px browser gates passed.
 - [x] LLM plans freeze canonical credential-free inputs, outputs and exact
   actions; each discovery/collection execution remains separately authorized.
-- [ ] Evidence-bound narrative interpretation and the isolated custom React
-  runtime remain M12 work; stored custom code is not executed by production.
+- [x] Evidence-bound narrative interpretation accepts only dynamically current
+  eligible observations, freezes ordered evidence/assessment references and
+  hashes, requires exact claim citations and cannot change trust state.
+- [x] `custom-react-sandbox-v1` verifies frozen source hashes, rejects imports,
+  disables network, uses an opaque-origin worker sandbox and terminates
+  untrusted execution at 250 ms; READY/fetch/loop browser cases passed.
+- [x] M12 migration `0013` passed fresh/cycle/drift and backed-up real upgrade;
+  72/72 backend tests, frontend build/audit and desktop/390px gates passed.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or
@@ -150,7 +156,8 @@ insight.
   contract can be replayed.
 - Safe UI DSL supports stack, metric, table, bounded single-series chart,
   evidence-date timeline and provenance. Map and multi-series panel nodes are
-  still unavailable; custom React source is stored but not executed.
+  still unavailable. Custom React runs only under the empty-dependency local
+  sandbox; third-party packages and multi-tenant execution remain unavailable.
 - L2 is a deterministic stored-input evidence summary, not predictive or
   externally augmented analysis.
 - General panel-level `map` remains outside the safe UI DSL; the implemented

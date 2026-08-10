@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.domain.evidence import canonical_json, sha256_bytes, sha256_json
 from app.models.research import (
+    EvidenceInterpretation,
+    EvidenceInterpretationInput,
     ResearchAction,
     ResearchActionEvent,
     ResearchActionType,
@@ -22,6 +24,7 @@ from app.models.research import (
     ResearchPlan,
     ResearchRun,
 )
+from app.models.evidence import TrustAssessment
 from app.models.sources import CollectionJob, SourceDefinition, SourcePool
 from app.services.collection_queue import CollectionQueue, create_collection_job
 from app.services.research_service import (
@@ -33,6 +36,12 @@ from app.services.research_service import (
     build_research_action_payloads,
     build_research_input_manifest,
 )
+from app.services.interpretation_service import (
+    INTERPRETATION_PROMPT_VERSION,
+    INTERPRETATION_SYSTEM_PROMPT,
+    InterpretationService,
+)
+from app.services.trust_service import TrustService
 from app.services.search_discovery_service import (
     SearchDiscoveryError,
     SearchDiscoveryService,
@@ -61,6 +70,17 @@ class DiscoveryExecutionRequest(BaseModel):
 
 class CollectionExecutionRequest(BaseModel):
     authorization_confirmed: bool
+
+
+class InterpretationRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=500)
+    question: str = Field(min_length=10, max_length=5000)
+    observation_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    created_by: str = Field(min_length=1, max_length=255)
+    provider: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=255)
+    base_url: HttpUrl | None = None
+    api_key: SecretStr | None = Field(default=None, max_length=500)
 
 
 async def _events_for_action(
@@ -234,6 +254,94 @@ async def _run_dict(db: AsyncSession, run: ResearchRun) -> dict[str, Any]:
     }
 
 
+async def _interpretation_dict(
+    db: AsyncSession,
+    interpretation: EvidenceInterpretation,
+) -> dict[str, Any]:
+    inputs = list(
+        (
+            await db.execute(
+                select(EvidenceInterpretationInput)
+                .where(
+                    EvidenceInterpretationInput.interpretation_id
+                    == interpretation.id
+                )
+                .order_by(EvidenceInterpretationInput.ordinal)
+            )
+        ).scalars()
+    )
+    trust_service = TrustService(db)
+    current_inputs = []
+    for item in inputs:
+        assessment = await db.get(TrustAssessment, item.trust_assessment_id)
+        current_inputs.append(
+            bool(assessment and await trust_service.is_assessment_current(assessment))
+        )
+    manifest = (
+        interpretation.input_manifest
+        if isinstance(interpretation.input_manifest, dict)
+        else {}
+    )
+    manifest_inputs = manifest.get("inputs")
+    manifest_inputs_valid = bool(
+        isinstance(manifest_inputs, list)
+        and all(isinstance(item, dict) for item in manifest_inputs)
+    )
+    try:
+        input_hash_valid = interpretation.input_hash == sha256_json(
+            interpretation.input_manifest
+        )
+        output_hash_valid = interpretation.output_hash == sha256_json(
+            interpretation.output
+        )
+    except (TypeError, ValueError, OverflowError):
+        input_hash_valid = False
+        output_hash_valid = False
+    integrity_valid = bool(
+        interpretation.prompt_version == INTERPRETATION_PROMPT_VERSION
+        and interpretation.system_prompt_sha256
+        == sha256_bytes(INTERPRETATION_SYSTEM_PROMPT.encode("utf-8"))
+        and manifest_inputs_valid
+        and input_hash_valid
+        and output_hash_valid
+        and interpretation.input_count == len(inputs)
+        and [item.ordinal for item in inputs] == list(range(len(inputs)))
+        and manifest.get("contract_version")
+        == INTERPRETATION_PROMPT_VERSION
+        and [item.get("observation_id") for item in manifest_inputs]
+        == [str(item.observation_id) for item in inputs]
+        and [item.get("trust_assessment_id") for item in manifest_inputs]
+        == [str(item.trust_assessment_id) for item in inputs]
+    )
+    return {
+        "id": str(interpretation.id),
+        "title": interpretation.title,
+        "question": interpretation.question,
+        "provider": interpretation.provider,
+        "model": interpretation.model,
+        "prompt_version": interpretation.prompt_version,
+        "system_prompt_sha256": interpretation.system_prompt_sha256,
+        "input_hash": interpretation.input_hash,
+        "input_manifest": interpretation.input_manifest,
+        "output_hash": interpretation.output_hash,
+        "output": interpretation.output,
+        "input_count": interpretation.input_count,
+        "created_by": interpretation.created_by,
+        "created_at": interpretation.created_at,
+        "integrity_valid": integrity_valid,
+        "currently_grounded": integrity_valid and all(current_inputs),
+        "inputs": [
+            {
+                "ordinal": item.ordinal,
+                "observation_id": str(item.observation_id),
+                "trust_assessment_id": str(item.trust_assessment_id),
+                "currently_eligible": current_inputs[index],
+            }
+            for index, item in enumerate(inputs)
+        ],
+    }
+
+
 @router.post("/runs", status_code=201)
 async def create_research_run(
     payload: ResearchPlanRequest,
@@ -327,6 +435,84 @@ async def get_research_run(
     if run is None:
         raise HTTPException(status_code=404, detail="research run not found")
     return await _run_dict(db, run)
+
+
+@router.post("/interpretations", status_code=201)
+async def create_interpretation(
+    payload: InterpretationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    provider_name = payload.provider or settings.AI_PROVIDER
+    model_name = payload.model or settings.AI_MODEL
+    provider_base_url = str(payload.base_url) if payload.base_url else settings.AI_API_BASE
+    provider_config_hash = sha256_json(
+        {
+            "provider": provider_name,
+            "model": model_name,
+            "base_url": provider_base_url,
+        }
+    )
+    try:
+        provider = create_provider(
+            ModelConfig(
+                provider=provider_name,
+                model=model_name,
+                api_key=(
+                    payload.api_key.get_secret_value()
+                    if payload.api_key is not None
+                    else settings.AI_API_KEY
+                ),
+                base_url=provider_base_url,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    try:
+        interpretation = await InterpretationService(db, provider).create(
+            title=payload.title,
+            question=payload.question,
+            observation_ids=payload.observation_ids,
+            provider_name=provider_name,
+            model_name=model_name,
+            provider_config_hash=provider_config_hash,
+            created_by=payload.created_by,
+        )
+    except LookupError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except httpx.HTTPError:
+        await db.rollback()
+        raise HTTPException(status_code=502, detail="model provider request failed") from None
+    except (KeyError, TypeError, IndexError):
+        await db.rollback()
+        raise HTTPException(
+            status_code=502,
+            detail="model provider returned a malformed response",
+        ) from None
+    return await _interpretation_dict(db, interpretation)
+
+
+@router.get("/interpretations")
+async def list_interpretations(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    interpretations = list(
+        (
+            await db.execute(
+                select(EvidenceInterpretation)
+                .order_by(desc(EvidenceInterpretation.created_at))
+                .limit(limit)
+            )
+        ).scalars()
+    )
+    return [
+        await _interpretation_dict(db, interpretation)
+        for interpretation in interpretations
+    ]
 
 
 async def _load_action_context(

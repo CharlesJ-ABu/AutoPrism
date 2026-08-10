@@ -288,3 +288,25 @@ synthetic features into the real reference database.
 
 BeautifulSoup/lxml currently emits an upstream `strip_cdata` deprecation
 warning in the HTML parser test. It does not affect output.
+
+## M12 isolated runtime and evidence-bound interpretation gate — 2026-08-10
+
+- Fresh disposable PostgreSQL upgraded through `0013_v2_evidence_interpretations`,
+  completed an empty downgrade/re-upgrade cycle and passed `alembic check`.
+- The formal `backend/tests` suite passed 72/72. A broader root discovery also
+  found the retained V1 `test_ai_pipeline.py`; it is outside the V2 test target
+  and still references a retired V1 service, so it was preserved rather than
+  deleted to make the result green.
+- Readable pre-M12 backup `/private/tmp/autoprism_pre_m12_20260810.dump`
+  (981 KiB, SHA-256
+  `09f901ce7d122113e7d12554db9773e2b9f79340e7e3b69b502ed2ad1131c054`)
+  preceded the additive real upgrade. The database retained 6 observations,
+  digest `d89b6eed0d4287ec35520cbd16386ce5`, 1 dashboard and zero new interpretation rows.
+- Frontend typecheck/build passed (2,891 modules; main JS 276.13 kB, gzip
+  82.42 kB) and production audit reported zero vulnerabilities. Container
+  `pip check` reported no broken requirements.
+- Real-empty desktop/mobile research and interpretation states passed with no
+  horizontal overflow or console warning/error. An isolated test database
+  proved custom runtime READY, network BLOCKED and 250 ms infinite-loop
+  termination. Visual records are `v2-m12-research-1280x720.png`,
+  `v2-m12-interpretation-390x844.png` and `v2-m12-runtime-1280x720.png`.

@@ -11,6 +11,10 @@ registered-source collection from a frozen database inventory, while every
 tool action remains individually authorized and all facts still enter through
 the ordinary evidence chain.
 
+M12 is complete: evidence-bound model narratives consume only current eligible
+observations and preserve exact citations/hashes without changing trust state;
+custom React presentation runs in the bounded opaque-origin sandbox.
+
 ## M7 follow-ups
 
 M7's fixed registry, bounded Decimal engine, direct/inverse evidence-bound FX,
@@ -25,10 +29,8 @@ is deliberately separate:
 
 ## V2 next
 
-- M12: evidence-bound LLM interpretation over ordered current assessments/L2
-  inputs; narrative claims must expose citations and cannot change trust state.
-- M12: restore and finish the opaque-origin custom component runtime already
-  saved as local work-in-progress, then reconcile it with the M11 Shell/API.
+- M13: full release regression, documentation consistency, final Compose and
+  V1/V2 visual comparison, remote fast-forward check and V2 release handoff.
 
 - Additional discovery providers only after they implement the same ephemeral
   credential, normalized URL, immutable result and manual-registration boundary.
@@ -37,8 +39,8 @@ is deliberately separate:
 - Expand safe UI DSL beyond the implemented metric/table/single-series-chart/
   timeline/provenance subset to map, heatmap, radar, ticker, network and
   evidence-safe multi-series components.
-- Isolated custom React compile/preview/runtime with dependency allowlist,
-  CSP, resource limits, and no ambient credentials.
+- Expand the custom runtime beyond its current empty dependency allowlist only
+  after each library has a reviewed immutable version and security contract.
 - Source-pool editing and deletion (creation/registration/collection are connected).
 - Calendar/cron schedules, maintenance windows and per-domain shared rate
   budgets; M10 intentionally supports bounded fixed intervals only.

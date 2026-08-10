@@ -5,6 +5,21 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M12 — isolated custom runtime and evidence-bound interpretation (2026-08-10)
+
+- Added `custom-react-sandbox-v1`: source/hash verification, worker compilation,
+  opaque-origin iframe, no imports/network, safe virtual DOM and 250 ms execution
+  termination. Browser gates proved READY, blocked fetch and killed infinite loop.
+- Added migration `0013_v2_evidence_interpretations` with immutable narratives
+  and ordered observation/assessment inputs, deferred pair/cardinality checks,
+  hash integrity and populated downgrade refusal.
+- Added strict structured interpretation: current eligible inputs only, exact
+  claim citations, no uncited/new numeric values, request-only credentials and
+  dynamic `currently_grounded` replay without changing trust state.
+- Passed 72/72 V2 backend tests, migration cycle/drift, frontend type/build,
+  zero-vulnerability audit, real backed-up additive migration and desktop/mobile
+  browser gates. Existing 6 observations and 1 dashboard were unchanged.
+
 ### M11 — LLM trustworthy research orchestration (2026-08-10)
 
 - Added migration `0012_v2_llm_research_runs` with immutable research runs,

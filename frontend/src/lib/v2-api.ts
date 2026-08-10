@@ -204,6 +204,41 @@ export interface ResearchRun {
   actions: ResearchAction[];
 }
 
+export interface EvidenceInterpretation {
+  id: string;
+  title: string;
+  question: string;
+  provider: string;
+  model: string;
+  prompt_version: 'evidence-bound-interpretation-v1';
+  system_prompt_sha256: string;
+  input_hash: string;
+  input_manifest: Record<string, unknown>;
+  output_hash: string;
+  output: {
+    summary: string;
+    claims: Array<{
+      statement: string;
+      observation_ids: string[];
+      trust_assessment_ids: string[];
+      reasoning: string;
+      limitation: string;
+    }>;
+    limitations: string[];
+  };
+  input_count: number;
+  created_by: string;
+  created_at: string;
+  integrity_valid: boolean;
+  currently_grounded: boolean;
+  inputs: Array<{
+    ordinal: number;
+    observation_id: string;
+    trust_assessment_id: string;
+    currently_eligible: boolean;
+  }>;
+}
+
 export interface CollectionJob {
   id: string;
   source_definition_id: string;
@@ -583,8 +618,11 @@ export interface PanelView {
   title: string;
   description: string;
   data_schema: Record<string, unknown>;
-  template_kind: string;
+  template_kind: 'ui_dsl' | 'custom_react';
   ui_dsl: UiDslNode;
+  component_code: string | null;
+  component_code_sha256: string | null;
+  visualization_contract: Record<string, unknown>;
   extraction_prompt_version: string;
   data: Record<string, unknown> | null;
   data_state: 'not_run' | 'invalid' | 'unverified';
@@ -706,6 +744,22 @@ export const api = {
   listScheduleDispatches: () =>
     request<ScheduleDispatch[]>('/sources/schedule-dispatches'),
   listResearchRuns: () => request<ResearchRun[]>('/research/runs'),
+  listInterpretations: () =>
+    request<EvidenceInterpretation[]>('/research/interpretations'),
+  createInterpretation: (payload: {
+    title: string;
+    question: string;
+    observation_ids: string[];
+    created_by: string;
+    provider?: string;
+    model?: string;
+    base_url?: string;
+    api_key?: string;
+  }) =>
+    request<EvidenceInterpretation>('/research/interpretations', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   createResearchRun: (payload: {
     source_pool_id: string;
     title: string;
@@ -758,6 +812,8 @@ export const api = {
     request<MetricObservation[]>(
       `/evidence/observations?panel_version_key=${encodeURIComponent(panelVersionKey)}`,
     ),
+  listTrustedObservations: () =>
+    request<MetricObservation[]>('/evidence/observations?trusted_only=true&limit=100'),
   listObservationRevisions: (panelVersionKey: string) =>
     request<ObservationRevision[]>(
       `/evidence/revisions?panel_version_key=${encodeURIComponent(panelVersionKey)}`,

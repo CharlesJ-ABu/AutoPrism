@@ -169,8 +169,22 @@ Exit: users can create, save, switch, and audit multiple research dashboards.
 
 Title-to-proposal, editable structured JSON, immutable save, dashboard
 switching, and metric/table/chart/timeline/provenance rendering are
-operational. Additional allowlisted visual types and the isolated custom React
-runtime remain pending.
+operational. The isolated `custom-react-sandbox-v1` runtime is now operational
+with an empty dependency contract, opaque origin, no network, safe output and
+hard execution limits. Additional allowlisted visual types remain pending.
+
+## M12 — isolated runtime and evidence-bound interpretation (complete)
+
+- Execute frozen custom presentation code without imports, network, ambient
+  credentials or direct host DOM access.
+- Accept only dynamically current eligible observations for model interpretation.
+- Freeze ordered evidence/assessment inputs and prompt/input/output hashes.
+- Require every narrative claim to cite exact stored pairs and forbid newly
+  calculated or uncited numeric values.
+- Preserve stale narrative history while removing its `currently_grounded` label.
+
+Exit: migration, 72/72 backend tests, frontend/static audits, real backed-up
+upgrade and desktop/mobile/security browser gates pass. M13 is release closeout.
 
 ## M6 — Exact lineage and trust replay (complete)
 

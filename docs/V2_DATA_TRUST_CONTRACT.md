@@ -248,6 +248,15 @@ It does not browse, predict, fill missing facts or execute model mathematics.
 Historical L2 rows remain immutable if an input is later revised; attempting to
 create a new current L2 summary with the superseded input is rejected.
 
+An evidence-bound LLM interpretation is not a trusted L2 fact. Creation accepts
+only ordered current-eligible observations and freezes their latest assessment
+IDs, scopes, values and full claim evidence. Every output claim must cite exact
+observation/assessment pairs; numeric tokens may only copy cited normalized
+values and the model cannot calculate new values. Prompt/input/output hashes and
+database foreign keys are append-only. `currently_grounded` is recomputed at
+read time and becomes false when any input assessment becomes stale; history is
+preserved and trust eligibility is never changed.
+
 Map features are a deterministic subset of L2 output. The
 `trusted-insight-map-v1` read model dynamically requires every stored input
 assessment to remain current, independently replays `geo-scope-v1`, and

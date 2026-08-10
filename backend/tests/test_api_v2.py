@@ -10,6 +10,12 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.database import async_engine, async_session_maker, get_db
 from app.main import app
+from app.api.v2.dashboards import (
+    CUSTOM_RUNTIME_VERSION,
+    PanelVersionCreate,
+    validate_custom_component_contract,
+)
+from app.models.dashboards import TemplateKind
 from app.services.search_discovery_service import DiscoveryCandidate
 from app.services.verification_service import observation_numeric_values
 
@@ -49,14 +55,68 @@ class V2ApiInputContractTests(unittest.IsolatedAsyncioTestCase):
                         "constraints": {"threshold": float("nan")},
                     },
                 )
+                interpretation = await client.post(
+                    "/api/v2/research/interpretations",
+                    json={
+                        "title": "Evidence interpretation",
+                        "question": "What can the selected trusted observation support?",
+                        "observation_ids": [str(uuid.uuid4())],
+                        "created_by": "local-user-self-attested",
+                        "provider": "unsupported-provider",
+                        "model": "test-model",
+                    },
+                )
             self.assertEqual(unsupported.status_code, 422, unsupported.text)
             self.assertEqual(nonfinite.status_code, 422, nonfinite.text)
+            self.assertEqual(interpretation.status_code, 422, interpretation.text)
             self.assertEqual(
                 nonfinite.json()["detail"],
                 "research constraints must be finite canonical JSON",
             )
         finally:
             app.dependency_overrides.pop(get_db, None)
+
+    def test_custom_component_contract_is_fail_closed(self):
+        base = {
+            "key": "custom-panel",
+            "title": "Custom panel",
+            "data_schema": {"type": "object", "properties": {}},
+            "template_kind": TemplateKind.CUSTOM_REACT,
+            "ui_dsl": {"type": "stack", "children": []},
+            "visualization_contract": {
+                "runtime": CUSTOM_RUNTIME_VERSION,
+                "dependencies": [],
+            },
+        }
+        accepted = PanelVersionCreate(
+            **base,
+            component_code="export default function Panel() { return <div>ok</div>; }",
+        )
+        validate_custom_component_contract(accepted)
+
+        rejected = [
+            {**base, "component_code": None},
+            {
+                **base,
+                "component_code": "export default function Panel() { return null; }",
+                "visualization_contract": {"runtime": "unsafe", "dependencies": []},
+            },
+            {
+                **base,
+                "component_code": (
+                    "import React from 'react'; "
+                    "export default function Panel() { return null; }"
+                ),
+            },
+            {
+                **base,
+                "component_code": "function Panel() { return null; }",
+            },
+        ]
+        for payload in rejected:
+            with self.subTest(payload=payload):
+                with self.assertRaisesRegex(Exception, "custom React panel"):
+                    validate_custom_component_contract(PanelVersionCreate(**payload))
 
     def test_historical_normalized_value_shape_fails_closed(self):
         for malformed in (None, [], {}, {"other": 1}, {"value": None}):

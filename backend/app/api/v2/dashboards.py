@@ -33,6 +33,12 @@ from app.services.dashboard_design_service import DashboardDesignService
 
 router = APIRouter()
 KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+CUSTOM_RUNTIME_VERSION = "custom-react-sandbox-v1"
+CUSTOM_COMPONENT_MAX_BYTES = 50_000
+CUSTOM_COMPONENT_FORBIDDEN_DEPENDENCY = re.compile(
+    r'(^|\n)\s*import(?:\s|["\'])|\bimport\s*\(|\brequire\s*\(',
+    re.MULTILINE,
+)
 
 
 class DashboardCreate(BaseModel):
@@ -50,7 +56,7 @@ class PanelVersionCreate(BaseModel):
     data_schema: dict[str, Any]
     template_kind: TemplateKind = TemplateKind.UI_DSL
     ui_dsl: dict[str, Any] = Field(default_factory=dict)
-    component_code: str | None = None
+    component_code: str | None = Field(default=None, max_length=50_000)
     visualization_contract: dict[str, Any] = Field(default_factory=dict)
     extraction_prompt: str = ""
     extraction_prompt_version: str = "1"
@@ -72,6 +78,51 @@ class ProposalRequest(BaseModel):
     model: str | None = None
     base_url: str | None = None
     api_key: str | None = None
+
+
+def validate_custom_component_contract(panel: PanelVersionCreate) -> None:
+    if panel.template_kind is not TemplateKind.CUSTOM_REACT:
+        if panel.component_code is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"UI DSL panel {panel.key} cannot carry executable component_code",
+            )
+        return
+    if not panel.component_code:
+        raise HTTPException(
+            status_code=422,
+            detail=f"custom React panel {panel.key} requires component_code",
+        )
+    if len(panel.component_code.encode("utf-8")) > CUSTOM_COMPONENT_MAX_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"custom React panel {panel.key} exceeds 50000 UTF-8 bytes",
+        )
+    contract = panel.visualization_contract
+    if (
+        contract.get("runtime") != CUSTOM_RUNTIME_VERSION
+        or contract.get("dependencies") != []
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"custom React panel {panel.key} requires runtime "
+                f"{CUSTOM_RUNTIME_VERSION} with an empty dependency allowlist"
+            ),
+        )
+    if not re.search(r"\bexport\s+default\b", panel.component_code):
+        raise HTTPException(
+            status_code=422,
+            detail=f"custom React panel {panel.key} requires an export default component",
+        )
+    if CUSTOM_COMPONENT_FORBIDDEN_DEPENDENCY.search(panel.component_code):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"custom React panel {panel.key} cannot import or require dependencies "
+                "under the v1 sandbox contract"
+            ),
+        )
 
 
 @router.post("", status_code=201)
@@ -157,11 +208,7 @@ async def create_dashboard_version(
                     ],
                 },
             )
-        if panel.template_kind is TemplateKind.CUSTOM_REACT and not panel.component_code:
-            raise HTTPException(
-                status_code=422,
-                detail=f"custom React panel {panel.key} requires component_code",
-            )
+        validate_custom_component_contract(panel)
         if panel.model_settings.get("extraction_engine") == "json_mapping_v1":
             try:
                 validate_deterministic_mapping(panel.model_settings)

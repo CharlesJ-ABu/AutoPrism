@@ -178,6 +178,86 @@ class ResearchActionEvent(Base):
     )
 
 
+class EvidenceInterpretation(Base):
+    """Append-only model narrative over frozen currently eligible inputs."""
+
+    __tablename__ = "evidence_interpretations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    system_prompt_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_manifest: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    output_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    output: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    input_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    model_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "input_count >= 1 AND input_count <= 100",
+            name="ck_evidence_interpretation_input_count",
+        ),
+        CheckConstraint(
+            "system_prompt_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_evidence_interpretation_prompt_hash",
+        ),
+        CheckConstraint(
+            "input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_evidence_interpretation_input_hash",
+        ),
+        CheckConstraint(
+            "output_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_evidence_interpretation_output_hash",
+        ),
+    )
+
+
+class EvidenceInterpretationInput(Base):
+    """Ordered database references for one frozen model interpretation."""
+
+    __tablename__ = "evidence_interpretation_inputs"
+
+    interpretation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_interpretations.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    observation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_observations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    trust_assessment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trust_assessments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "ordinal >= 0",
+            name="ck_evidence_interpretation_input_ordinal",
+        ),
+        UniqueConstraint(
+            "interpretation_id",
+            "observation_id",
+            name="uq_evidence_interpretation_observation",
+        ),
+    )
+
+
 def _reject_research_mutation(mapper, connection, target) -> None:
     raise RuntimeError(f"{type(target).__name__} is append-only")
 
@@ -187,6 +267,8 @@ for _append_only_model in (
     ResearchPlan,
     ResearchAction,
     ResearchActionEvent,
+    EvidenceInterpretation,
+    EvidenceInterpretationInput,
 ):
     event.listen(_append_only_model, "before_update", _reject_research_mutation)
     event.listen(_append_only_model, "before_delete", _reject_research_mutation)

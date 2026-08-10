@@ -1,19 +1,25 @@
 import os
 import unittest
 import uuid
+from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
-from sqlalchemy import func, select, text
+from sqlalchemy import event, func, select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.ai.providers import StructuredModelResponse
 from app.core.database import async_engine, async_session_maker
 from app.domain.evidence import canonical_json, sha256_json
 from app.models.research import (
+    EvidenceInterpretation,
+    EvidenceInterpretationInput,
     ResearchAction,
     ResearchActionEvent,
     ResearchEventType,
     ResearchPlan,
     ResearchRun,
+    _reject_research_mutation,
 )
 from app.models.sources import SourceDefinition, SourceKind, SourcePool
 from app.services.research_service import (
@@ -25,6 +31,13 @@ from app.services.research_service import (
     ResearchPlanningService,
     build_research_input_manifest,
     build_research_user_prompt,
+)
+from app.services.interpretation_service import (
+    INTERPRETATION_OUTPUT_SCHEMA,
+    INTERPRETATION_SYSTEM_PROMPT,
+    InterpretationDocument,
+    InterpretationService,
+    _validate_document,
 )
 
 
@@ -79,6 +92,23 @@ def valid_plan(source_key: str) -> dict:
 
 
 class ResearchPlanContractTests(unittest.TestCase):
+    def test_research_and_interpretation_models_are_append_only(self):
+        for model in (
+            ResearchRun,
+            ResearchPlan,
+            ResearchAction,
+            ResearchActionEvent,
+            EvidenceInterpretation,
+            EvidenceInterpretationInput,
+        ):
+            with self.subTest(model=model.__name__):
+                self.assertTrue(
+                    event.contains(model, "before_update", _reject_research_mutation)
+                )
+                self.assertTrue(
+                    event.contains(model, "before_delete", _reject_research_mutation)
+                )
+
     def test_prompt_and_schema_forbid_model_execution_claims(self):
         self.assertIn("Never claim", RESEARCH_PLAN_SYSTEM_PROMPT)
         self.assertIn("Never output factual findings", RESEARCH_PLAN_SYSTEM_PROMPT)
@@ -104,6 +134,76 @@ class ResearchPlanContractTests(unittest.TestCase):
         payload["collection_actions"] = []
         with self.assertRaises(ValueError):
             ResearchPlanDocument.model_validate(payload)
+
+    def test_interpretation_requires_exact_input_pairs_and_cited_numbers(self):
+        observation_id = uuid.uuid4()
+        assessment_id = uuid.uuid4()
+        allowed_pairs = {observation_id: assessment_id}
+        numeric_values = {observation_id: Decimal("42")}
+        base = {
+            "summary": "The selected evidence supports a bounded interpretation.",
+            "claims": [
+                {
+                    "statement": "The stored value is 42 vehicles.",
+                    "observation_ids": [str(observation_id)],
+                    "trust_assessment_ids": [str(assessment_id)],
+                    "reasoning": "The cited normalized value is 42.",
+                    "limitation": "This statement does not establish a forecast.",
+                }
+            ],
+            "limitations": ["Model narrative does not change trust eligibility."],
+        }
+        document = InterpretationDocument.model_validate(base)
+        _validate_document(document, allowed_pairs, numeric_values)
+        self.assertIn("do not calculate", INTERPRETATION_SYSTEM_PROMPT)
+        self.assertEqual(INTERPRETATION_OUTPUT_SCHEMA["additionalProperties"], False)
+
+        uncited = {**base, "claims": [{**base["claims"][0], "statement": "The value is 43."}]}
+        with self.assertRaisesRegex(ValueError, "uncited numeric value"):
+            _validate_document(
+                InterpretationDocument.model_validate(uncited),
+                allowed_pairs,
+                numeric_values,
+            )
+
+        wrong_pair = {
+            **base,
+            "claims": [
+                {
+                    **base["claims"][0],
+                    "trust_assessment_ids": [str(uuid.uuid4())],
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "unavailable input pair"):
+            _validate_document(
+                InterpretationDocument.model_validate(wrong_pair),
+                allowed_pairs,
+                numeric_values,
+            )
+
+
+class InterpretationEligibilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_noncurrent_assessment_is_rejected_before_model_or_persistence(self):
+        observation_id = uuid.uuid4()
+        observation = SimpleNamespace(
+            id=observation_id,
+            normalized_value={"value": 42},
+        )
+        assessment = SimpleNamespace(id=uuid.uuid4(), observation_id=observation_id)
+        result = SimpleNamespace(scalar_one_or_none=lambda: assessment)
+        db = SimpleNamespace(
+            get=AsyncMock(return_value=observation),
+            execute=AsyncMock(return_value=result),
+        )
+        provider = SimpleNamespace(generate=AsyncMock())
+        with patch(
+            "app.services.interpretation_service.TrustService.is_assessment_current",
+            AsyncMock(return_value=False),
+        ):
+            with self.assertRaisesRegex(ValueError, "current eligible"):
+                await InterpretationService(db, provider)._load_inputs([observation_id])
+        provider.generate.assert_not_awaited()
 
 
 @unittest.skipUnless(
@@ -275,6 +375,27 @@ class ResearchPlanIntegrationTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(DBAPIError):
                 await db.commit()
             await db.rollback()
+
+    async def test_interpretation_database_guards_are_installed(self):
+        expected = {
+            "trg_evidence_interpretations_immutable",
+            "trg_evidence_interpretations_immutable_truncate",
+            "trg_evidence_interpretation_inputs_immutable",
+            "trg_evidence_interpretation_inputs_immutable_truncate",
+            "trg_evidence_interpretation_input_set",
+            "trg_evidence_interpretation_input_row",
+        }
+        async with async_session_maker() as db:
+            rows = (
+                await db.execute(
+                    text(
+                        "SELECT tgname FROM pg_trigger "
+                        "WHERE NOT tgisinternal AND tgname = ANY(:names)"
+                    ),
+                    {"names": list(expected)},
+                )
+            ).scalars().all()
+        self.assertEqual(set(rows), expected)
 
 
 if __name__ == "__main__":
