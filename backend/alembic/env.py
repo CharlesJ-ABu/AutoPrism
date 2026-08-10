@@ -8,6 +8,7 @@ from app.core.database import Base
 from app.models import evidence  # noqa: F401
 from app.models import dashboards  # noqa: F401
 from app.models import sources  # noqa: F401
+from app.models import research  # noqa: F401
 from app.models import sql  # noqa: F401
 
 

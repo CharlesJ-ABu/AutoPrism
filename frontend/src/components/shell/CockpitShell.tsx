@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import {
   Activity,
   Archive,
+  Bot,
   ChevronRight,
   Database,
   DatabaseZap,
@@ -42,6 +43,7 @@ export function CockpitShell({
   onRefresh,
   onManageVersions,
   onManageOperations,
+  onManageResearch,
   overlayOpen = false,
   children,
 }: {
@@ -61,6 +63,7 @@ export function CockpitShell({
   onRefresh: () => void;
   onManageVersions?: () => void;
   onManageOperations?: () => void;
+  onManageResearch?: () => void;
   overlayOpen?: boolean;
   children: ReactNode;
 }) {
@@ -133,6 +136,11 @@ export function CockpitShell({
             {description && <p>{description}</p>}
           </div>
           <div className="topbar-actions">
+            {onManageResearch && (
+              <Button onClick={onManageResearch}>
+                <Bot size={14} /> AI 研究
+              </Button>
+            )}
             {onManageOperations && (
               <Button onClick={onManageOperations}>
                 <DatabaseZap size={14} /> 采集与处理

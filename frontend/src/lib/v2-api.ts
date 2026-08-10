@@ -129,6 +129,81 @@ export interface ScheduleDispatch {
   collection_job_id: string | null;
 }
 
+export type ResearchActionState =
+  | 'proposed'
+  | 'authorized'
+  | 'started'
+  | 'completed'
+  | 'queued'
+  | 'blocked'
+  | 'failed'
+  | 'missing';
+
+export interface ResearchActionEvent {
+  id: string;
+  event_type: Exclude<ResearchActionState, 'missing'>;
+  actor_label: string;
+  details: Record<string, unknown>;
+  predecessor_id: string | null;
+  created_at: string;
+}
+
+export interface ResearchAction {
+  id: string;
+  run_id: string;
+  plan_id: string;
+  ordinal: number;
+  action_type: 'discover' | 'collect';
+  specification: Record<string, unknown>;
+  requires_authorization: boolean;
+  created_at: string;
+  current_state: ResearchActionState;
+  events: ResearchActionEvent[];
+  collection_job: CollectionJob | null;
+}
+
+export interface ResearchPlanDocument {
+  summary: string;
+  research_questions: string[];
+  discovery_actions: Array<{ query: string; purpose: string; limit: number }>;
+  collection_actions: Array<{ source_key: string; purpose: string }>;
+  analysis_targets: Array<{
+    key: string;
+    question: string;
+    expected_fields: string[];
+    evidence_expectation: string;
+    requires_cross_source: boolean;
+  }>;
+  interpretation_questions: string[];
+  limitations: string[];
+}
+
+export interface ResearchRun {
+  id: string;
+  source_pool_id: string;
+  title: string;
+  objective: string;
+  constraints: Record<string, unknown>;
+  actor_label: string;
+  created_at: string;
+  plan: {
+    id: string;
+    provider: string;
+    model: string;
+    prompt_version: string;
+    system_prompt_sha256: string;
+    input_hash: string;
+    input_manifest: Record<string, unknown>;
+    output_hash: string;
+    document: ResearchPlanDocument;
+    action_count: number;
+    model_metadata: Record<string, unknown>;
+    integrity_valid: boolean;
+    created_at: string;
+  } | null;
+  actions: ResearchAction[];
+}
+
 export interface CollectionJob {
   id: string;
   source_definition_id: string;
@@ -630,6 +705,41 @@ export const api = {
     }),
   listScheduleDispatches: () =>
     request<ScheduleDispatch[]>('/sources/schedule-dispatches'),
+  listResearchRuns: () => request<ResearchRun[]>('/research/runs'),
+  createResearchRun: (payload: {
+    source_pool_id: string;
+    title: string;
+    objective: string;
+    constraints: Record<string, unknown>;
+    provider?: string;
+    model?: string;
+    base_url?: string;
+    api_key?: string;
+  }) =>
+    request<ResearchRun>('/research/runs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  executeResearchDiscovery: (
+    actionId: string,
+    payload: {
+      api_key: string;
+      search_engine_id: string;
+      authorization_confirmed: boolean;
+    },
+  ) =>
+    request<ResearchAction>(`/research/actions/${actionId}/discover`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  executeResearchCollection: (
+    actionId: string,
+    payload: { authorization_confirmed: boolean },
+  ) =>
+    request<ResearchAction>(`/research/actions/${actionId}/collect`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   collectSource: (sourceId: string) =>
     request<CollectionJob>(`/sources/${sourceId}/collect`, { method: 'POST' }),
   listCollectionJobs: () => request<CollectionJob[]>('/sources/jobs'),

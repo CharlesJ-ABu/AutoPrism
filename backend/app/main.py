@@ -11,6 +11,7 @@ from app.core.database import Base, async_engine, async_session_maker
 from app.models import dashboards as _dashboard_models  # noqa: F401
 from app.models import evidence as _evidence_models  # noqa: F401
 from app.models import sources as _source_models  # noqa: F401
+from app.models import research as _research_models  # noqa: F401
 
 
 @asynccontextmanager

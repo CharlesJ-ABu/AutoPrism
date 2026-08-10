@@ -63,7 +63,7 @@ zero migrations. Never point this command at the populated development database.
 
 ### Populated database gate
 
-1. Stop `web` and `worker` so no writer races the backup or migration.
+1. Stop `web`, `worker` and `scheduler` so no writer races the backup or migration.
 2. Back up PostgreSQL and the artifact volume; record the actual paths,
    timestamps, sizes and SHA-256 values in the operator log.
 3. Verify the PostgreSQL dump can be listed/read and the artifact archive is
@@ -97,6 +97,11 @@ bounds for legacy observations. On a populated upgrade, reconcile the original
 observation count/digest and verify the new numeric/calculation-input/conversion
 tables remain empty unless those rows were created through the new contract.
 Downgrade is allowed only on a disposable database with no M7 history.
+
+Migration `0012_v2_llm_research_runs` only adds immutable orchestration tables
+and creates no plans/actions during upgrade. Reconcile observation/dashboard
+counts and verify the four research tables are empty on first upgrade. A
+populated M11 database refuses downgrade rather than erase research history.
 
 ### M6 lineage audit
 
@@ -185,5 +190,7 @@ later bundle.
 - `/api/v2/dashboards`: proposals, immutable versions and view payloads.
 - `/api/v2/insights`: stored-input-only L2 creation/history and current-only
   `trusted-insight-map-v1` features at `/map-features`.
+- `/api/v2/research`: immutable LLM plans, integrity status, append-only action
+  events and explicit discovery/collection execution gates.
 
 OpenAPI documentation is served at `/docs`.

@@ -102,6 +102,15 @@ M1–M5 screenshots were not reused as current acceptance evidence.
 - [x] Composer and drawer overlays retract the sidebar on desktop/mobile,
   cover the full viewport, lock background scroll and restore navigation on
   close without console errors.
+- [x] M11 migration 0012 passed zero-to-head, empty downgrade/re-upgrade,
+  drift and backed-up real-database gates without changing 6 observations or
+  the one existing dashboard; research tables began empty.
+- [x] M11 backend 67/67, frontend type/build, zero-vulnerability audit and
+  real-empty/isolated-nonempty desktop/390px browser gates passed.
+- [x] LLM plans freeze canonical credential-free inputs, outputs and exact
+  actions; each discovery/collection execution remains separately authorized.
+- [ ] Evidence-bound narrative interpretation and the isolated custom React
+  runtime remain M12 work; stored custom code is not executed by production.
 - [x] Recorded M6 implementation commit `2b9bd54`; immediately before the
   release-record commit, `origin/v2...HEAD` was `0 1` and the remote head
   `ccb30e9` was an ancestor. Push only by fast-forward; do not create a PR or

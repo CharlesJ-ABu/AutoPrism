@@ -14,6 +14,22 @@ or JSON Schema validation. Current policy versions are:
 Older policy labels remain immutable history but are not accepted as current
 eligibility proof.
 
+## Research orchestration is not evidence
+
+`research-plan-v1` is an orchestration contract, not a trust policy. The model
+may propose research questions, Google queries, exact registered-source keys,
+analysis targets and interpretation questions using only the supplied database
+inventory. It may not assert that a source was searched/read/collected, output
+authoritative facts or measurements, create default/NA values, execute
+arithmetic or decide trust.
+
+Each plan freezes a canonical credential-free input manifest, system-prompt
+hash, provider/model identity, structured output hash and exact action set.
+Actions are inert until individually authorized. Their only executors are the
+existing discovery provider and policy-checked collection queue. Resulting
+candidates remain unregistered; resulting snapshots begin at L1 and still
+traverse the ordinary INFO, validation and assessment contracts.
+
 The Shell insight-map contracts frozen on 2026-08-10 are:
 
 - observation geography: `geo-scope-v1`;

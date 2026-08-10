@@ -9,6 +9,7 @@ import { EmptyState, ErrorState, LoadingState } from './components/ui';
 import { DashboardComposer } from './features/dashboards/DashboardComposer';
 import { VersionManagerDrawer } from './features/dashboards/VersionManagerDrawer';
 import { OperationsDrawer } from './features/operations/OperationsDrawer';
+import { ResearchDrawer } from './features/research/ResearchDrawer';
 import {
   api,
   type DashboardListItem,
@@ -44,9 +45,10 @@ function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
+  const [researchOpen, setResearchOpen] = useState(false);
   const mapLoadGeneration = useRef(0);
   const overlayOpen = Boolean(
-    selectedPanel || composerOpen || versionManagerOpen || operationsOpen,
+    selectedPanel || composerOpen || versionManagerOpen || operationsOpen || researchOpen,
   );
 
   useEffect(() => {
@@ -178,6 +180,7 @@ function App() {
         setSelectedPanel(undefined);
         setVersionManagerOpen(false);
         setOperationsOpen(false);
+        setResearchOpen(false);
         setComposerOpen(true);
       }}
       perspective={perspective}
@@ -191,13 +194,22 @@ function App() {
         setSelectedPanel(undefined);
         setComposerOpen(false);
         setOperationsOpen(false);
+        setResearchOpen(false);
         setVersionManagerOpen(true);
       } : undefined}
       onManageOperations={() => {
         setSelectedPanel(undefined);
         setComposerOpen(false);
         setVersionManagerOpen(false);
+        setResearchOpen(false);
         setOperationsOpen(true);
+      }}
+      onManageResearch={() => {
+        setSelectedPanel(undefined);
+        setComposerOpen(false);
+        setVersionManagerOpen(false);
+        setOperationsOpen(false);
+        setResearchOpen(true);
       }}
       overlayOpen={overlayOpen}
     >
@@ -290,6 +302,7 @@ function App() {
           onExtractionComplete={() => loadDashboards(selectedId)}
         />
       )}
+      {researchOpen && <ResearchDrawer onClose={() => setResearchOpen(false)} />}
     </CockpitShell>
   );
 }

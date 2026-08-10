@@ -6,6 +6,11 @@ The M6 current-worktree browser gate and the `trusted-insight-map-v1` dual-map
 follow-up passed on 2026-08-10. Baselines and exact results are recorded under
 `docs/visual-baselines/2026-08-10/` and `V2_TESTING.md`.
 
+M11 research orchestration is complete: the LLM plans bounded discovery and
+registered-source collection from a frozen database inventory, while every
+tool action remains individually authorized and all facts still enter through
+the ordinary evidence chain.
+
 ## M7 follow-ups
 
 M7's fixed registry, bounded Decimal engine, direct/inverse evidence-bound FX,
@@ -19,6 +24,11 @@ is deliberately separate:
 - standalone replay-report endpoints for external auditors.
 
 ## V2 next
+
+- M12: evidence-bound LLM interpretation over ordered current assessments/L2
+  inputs; narrative claims must expose citations and cannot change trust state.
+- M12: restore and finish the opaque-origin custom component runtime already
+  saved as local work-in-progress, then reconcile it with the M11 Shell/API.
 
 - Additional discovery providers only after they implement the same ephemeral
   credential, normalized URL, immutable result and manual-registration boundary.

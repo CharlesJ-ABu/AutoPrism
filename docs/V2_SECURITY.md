@@ -15,6 +15,9 @@ documented localhost frontend origins.
 - `.env.example` contains placeholders only.
 - API keys supplied through the dashboard composer are sent only to the local
   backend for that proposal request and are not persisted in dashboard models.
+- API keys supplied through AI Research are request-only. The plan freezes
+  provider/model and a canonical credential-free source inventory, never the
+  key, credential references, request configuration or parser configuration.
 - Google discovery API keys and raw search-engine IDs are request-only. The key
   is excluded entirely; discovery history stores only a one-way configuration
   hash, query and normalized candidates. Queries are immutable audit data and
@@ -43,6 +46,12 @@ attested schedule version. The 15-minute minimum is a floor, not permission to
 ignore a source's stricter terms or rate limits. A due interval creates an
 ordinary policy-checked job; access restrictions still stop it and enter the
 human-action queue.
+
+An LLM research plan has no tool authority. Discovery and collection require a
+separate explicit confirmation for each immutable proposal. The planner can
+select only source keys present in its frozen pool; changed, missing or disabled
+sources fail before queueing. Search credentials are ephemeral and upstream
+errors are sanitized.
 
 ## Artifact integrity
 

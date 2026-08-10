@@ -26,7 +26,7 @@ retained to show the original gap and must not be read as current M6 status.
 | Tests | V1 build and crawler gaps are documented | 23 backend tests, migration checks, frontend build, Compose and browser record dated 2026-07-25 | Historical evidence only until re-run in the current worktree |
 | Documentation | V1 PRD/architecture plus screenshots | V2 architecture, roadmap, security, testing and runbook | Historical gap; dedicated Schema/UI DSL, trust, testing and release documents now exist |
 
-### Current delta through M10
+### Current delta through M11
 
 - The V1-continuity cockpit and split component system remain implemented.
 - `evidence-extraction-v3` now freezes exact ordered extraction inputs.
@@ -85,6 +85,7 @@ retained to show the original gap and must not be read as current M6 status.
 | M8 Safe visual DSL | Schema-bound single-series line/bar/area charts and evidence-date timelines with truthful empty states | 55/55 backend, frontend type/build, isolated non-empty desktop/mobile smoke | Complete; multi-series/map remain explicitly unsupported |
 | M9 Compliant discovery | Ephemeral Google credentials, immutable normalized candidates and manual registration gate | `0008`/`0009`, fresh/cycle/populated gates, 59/59 backend, frontend audit/build and responsive smoke | Complete; no saved key and no automatic collection |
 | M10 Refresh scheduler | Authorization-attested interval versions, idempotent current-bucket dispatch and immutable outcomes | `0010`, fresh/cycle/populated gates, 62/62 backend, six-service Compose and responsive smoke | Complete for fixed intervals; cron/shared domain budgets deferred |
+| M11 LLM research orchestration | Frozen source-inventory planning, bounded discovery/collection proposals and per-action authorization | `0012`, 67/67 backend, real/isolated responsive browser gates, unchanged real data | Complete for planning/tool routing; evidence-bound narrative interpretation remains M12 |
 
 ## Feature acceptance ledger
 

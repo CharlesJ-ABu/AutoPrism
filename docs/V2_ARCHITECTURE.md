@@ -33,6 +33,23 @@ candidates. A candidate is not a `SourceDefinition`: a human must still review
 authorization, terms, robots, reputation and topic authority before registration
 and must separately authorize collection.
 
+M11 adds a research-orchestration layer above that boundary:
+
+```text
+User objective + database source-pool inventory
+  -> ResearchRun
+  -> frozen ResearchPlan (canonical input/output hashes)
+  -> allowlisted ResearchAction proposals
+  -> explicit per-action authorization
+  -> existing SearchDiscoveryService or collection queue
+```
+
+The model receives no credential reference or request/parser configuration.
+It may select only exact registered source keys or propose bounded search
+queries. A plan is not L1, INFO, validation or L2 evidence. Action events form
+one append-only chain; reads rebuild actions from the frozen plan and mark any
+cardinality, specification, hash or event-root mismatch invalid.
+
 ## Data levels
 
 - **L1**: immutable acquired source material and its capture metadata.
@@ -211,6 +228,10 @@ Browser :5173
 FastAPI serves V2 only. V1 runtime code remains available from the frozen
 `main` branch; V1 database tables are preserved during Alembic comparison and
 classified as legacy data.
+
+The research planner calls configured OpenAI-compatible or Gemini structured
+output adapters from FastAPI. Search and model credentials are request-only;
+the immutable plan stores only a response-ID hash and finite token-count metadata.
 
 ## Dynamic dashboard contract
 

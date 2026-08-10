@@ -17,8 +17,9 @@ milestone are complete. The safe UI DSL now includes bounded single-series
 charts and evidence-date timelines. M9 adds credential-ephemeral Google source
 discovery with immutable candidate history and a mandatory manual registration
 gate. M10 adds append-only refresh-policy versions, immutable dispatch history
-and an independent Scheduler service. Additional visual types and isolated
-custom-component execution remain the next V2 work.
+and an independent Scheduler service. M11 adds an LLM research orchestrator
+that plans bounded discovery and collection from the database source inventory
+while leaving tool execution behind explicit gates.
 
 ## Status at branch creation
 
@@ -87,6 +88,34 @@ review and collection remain separate human-authorized steps.
 Exit: a registered source can be refreshed on a reviewed interval without
 rewriting policy history, duplicating an active job or bypassing collection
 compliance checks.
+
+## M11 — Trustworthy LLM research orchestration (complete)
+
+- A user objective and constraints are bound to one database source pool.
+- The model freezes research questions, bounded discovery queries, exact
+  registered-source collection proposals, analysis targets and limitations.
+- Canonical credential-free input, output, provider/model and system prompt are
+  hashed; executable actions must rebuild exactly from the frozen plan.
+- Every discovery or collection proposal remains inert until a local user
+  explicitly authorizes that individual action.
+- Google discovery and the ordinary policy-checked collection queue perform the
+  work; the model never becomes arithmetic or trust authority.
+
+Exit: an LLM can coordinate comprehensive research without silently browsing,
+collecting, inserting facts, bypassing compliance or turning a plan into data.
+
+## M12 — Evidence-bound interpretation and isolated visualization runtime
+
+- Bind model narrative output to ordered current TrustAssessment/L2 inputs and
+  show claim-level citations and limitations.
+- Restore and finish the saved opaque-origin custom-component runtime with a
+  compiler worker, network/import denial, code-hash check, 250 ms budget and
+  safe vDOM boundary.
+- Keep narrative, deterministic calculation and trust eligibility as visibly
+  separate states.
+
+Exit: model-assisted explanation and custom rendering are useful without
+expanding fact, network or code authority.
 
 ## Phase 2 — Extraction and verification (core complete)
 

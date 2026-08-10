@@ -15,6 +15,49 @@ from app.services.verification_service import observation_numeric_values
 
 
 class V2ApiInputContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_research_provider_and_nonfinite_constraints_are_422(self):
+        class FakeSession:
+            async def get(self, model, identity):
+                return SimpleNamespace(id=identity)
+
+        async def override_get_db():
+            yield FakeSession()
+
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://test",
+            ) as client:
+                unsupported = await client.post(
+                    "/api/v2/research/runs",
+                    json={
+                        "source_pool_id": str(uuid.uuid4()),
+                        "title": "Research plan",
+                        "objective": "Create an auditable official-source research plan.",
+                        "provider": "unsupported-provider",
+                        "model": "test-model",
+                    },
+                )
+                nonfinite = await client.post(
+                    "/api/v2/research/runs",
+                    json={
+                        "source_pool_id": str(uuid.uuid4()),
+                        "title": "Research plan",
+                        "objective": "Create an auditable official-source research plan.",
+                        "constraints": {"threshold": float("nan")},
+                    },
+                )
+            self.assertEqual(unsupported.status_code, 422, unsupported.text)
+            self.assertEqual(nonfinite.status_code, 422, nonfinite.text)
+            self.assertEqual(
+                nonfinite.json()["detail"],
+                "research constraints must be finite canonical JSON",
+            )
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
     def test_historical_normalized_value_shape_fails_closed(self):
         for malformed in (None, [], {}, {"other": 1}, {"value": None}):
             with self.subTest(normalized_value=malformed):

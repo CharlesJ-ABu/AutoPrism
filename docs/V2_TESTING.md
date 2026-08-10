@@ -150,9 +150,38 @@ comes from the full disposable-PostgreSQL run, not the skipped fast run.
   viewport, lock background scroll, fit within 390×844 without horizontal
   overflow, and restore the navigation and scrolling after close.
 
+## M11 LLM research orchestration gate — 2026-08-10
+
+- Fresh database `autoprism_v2_m11_gate_20260810` upgraded from zero through
+  `0012_v2_llm_research_runs`; `alembic check` reported no drift. A second empty
+  database completed zero-to-head, downgrade to 0011, re-upgrade and drift check.
+- The complete disposable-PostgreSQL suite passed 67/67. New coverage includes
+  the plan system boundary, strict structured action counts, canonical prompt/
+  input hashes, exact source allowlisting, append-only transitions, immutable
+  database guards, deferred cardinality and fail-closed API input handling.
+- Readable backup `/private/tmp/autoprism_pre_m11_20260810.dump` (963 KiB,
+  SHA-256 `edc7f434d8cc62900f142d0c9875cd5ea81360c85a54529e88ad333900099c11`)
+  was listed before the real additive upgrade. The real database advanced to
+  0012 with 6 observations, digest `d89b6eed0d4287ec35520cbd16386ce5`,
+  1 dashboard and zero research rows.
+- Frontend typecheck/build passed (2,890 modules; main JS 263.01 kB, gzip
+  78.12 kB); the production audit reported zero vulnerabilities.
+- Real-empty and isolated-nonempty browser gates passed at 1440×800 and
+  390×844. The form, HASH VERIFIED state, questions/targets/limitations,
+  terminal/proposed actions and per-action authorization were exercised. The
+  sidebar retracted, scroll lock restored, mobile scroll width equaled 390 px
+  and no console warning/error was recorded.
+- Visual records: `v2-m11-research-1440x800.png` and
+  `v2-m11-research-390x844.png`.
+
 ## Database migrations
 
-Current revision: `0011_v2_schedule_source_guard`.
+Current revision: `0012_v2_llm_research_runs`.
+
+M11 adds only immutable research objectives, frozen LLM planning inputs and
+outputs, allowlisted proposals and append-only execution events. It does not
+execute a proposal, create a source, collect content or backfill history during
+migration. Populated downgrade fails closed.
 
 M10 adds only append-only schedule versions, immutable dispatch outcomes and
 same-source reference constraints. It does not create a schedule for historical

@@ -25,6 +25,9 @@ V2 界面延续 V1 的深色科技驾驶舱、紫青光效和高密度情报终�
 - 来源池、可信度、主题权威度、抓取策略和人工处理队列。
 - Google Programmable Search 合规发现工作台：API key/CX 仅用于单次请求，
   结果进入不可变候选历史，但不会自动注册或采集。
+- LLM 可信研究编排器：模型只读取数据库中的来源池清单，冻结研究问题、检索词、
+  已注册来源采集提案、分析目标与限制；每个外部动作逐项授权，搜索/抓取/哈希/
+  验证/计算仍由受控工具执行，计划本身不等于事实。
 - 冻结的主面板/子面板版本、JSON Schema、UI DSL、组件源码哈希、
   提示词版本和模型设置。
 - OpenAI-compatible 与 Google Gemini 的供应商无关模型适配器。
@@ -75,8 +78,9 @@ AI_API_KEY=
 AI_MODEL=gpt-4o
 ```
 
-也可在“新建主面板”中临时提供供应商、模型、Base URL 和 API Key。临时 Key
-只用于该次设计请求，不会写入面板版本。SaaS 的组织级加密凭证库尚未在 V2 实现。
+也可在“新建主面板”或“AI 研究”中临时提供供应商、模型、Base URL 和 API Key。
+临时 Key 只用于该次请求，不会写入面板或研究计划。SaaS 的组织级加密凭证库尚未
+在 V2 实现。
 
 ## 数据语义
 
@@ -142,6 +146,11 @@ PostgreSQL 完整套件 59/59、前端 typecheck/build 与生产依赖审计通�
 `0011_v2_schedule_source_guard` 的 fresh、空库循环、已有历史降级拒绝和真实备份
 升级通过；62/62 后端测试、前端构建/审计、六服务 Compose 与桌面/390px 浏览器
 验收通过。真实 6 条观测摘要和 1 个主面板未变化。
+
+同日 M11 验证记录：迁移 `0012_v2_llm_research_runs` 的 zero-to-head、空库
+downgrade/re-upgrade、漂移检查与真实备份升级通过；67/67 后端测试、前端
+typecheck/build、0 漏洞审计、真实与隔离数据浏览器验收通过。真实 6 条观测摘要、
+1 个主面板保持不变，研究表从空状态开始，没有回填或生成任何研究事实。
 
 详见 [运行手册](docs/V2_RUNBOOK.md)、[测试记录](docs/V2_TESTING.md)、
 [安全说明](docs/V2_SECURITY.md)、[架构](docs/V2_ARCHITECTURE.md)、[路线图](docs/V2_ROADMAP.md) 和

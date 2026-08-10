@@ -5,6 +5,28 @@ edition and is not a merge target.
 
 ## Unreleased
 
+### M11 — LLM trustworthy research orchestration (2026-08-10)
+
+- Added migration `0012_v2_llm_research_runs` with immutable research runs,
+  frozen model plans, allowlisted discovery/collection actions and append-only
+  single-chain action events. Deferred checks freeze action count and ordinals;
+  UPDATE/DELETE/TRUNCATE and populated downgrade fail closed.
+- Added a provider-neutral planner. It receives only a credential-free database
+  source inventory and may propose bounded search queries, exact registered
+  source keys, analysis targets, interpretation questions and limitations. It
+  cannot claim tool execution or establish factual findings.
+- Froze prompt/system hash, canonical input manifest, output hash,
+  provider/model metadata and action specifications. API reads rebuild the
+  actions; an altered or incomplete chain is integrity-failed and cannot run.
+- Reused Google discovery and the collection queue behind explicit per-action
+  authorization. Ephemeral model/search credentials are not stored and
+  compliance blocks remain human-action states.
+- Added the cockpit AI Research workspace with plan-vs-fact copy, hashes,
+  targets/limitations, per-action gates and responsive sidebar-safe layout.
+- Passed 67/67 backend tests, migration/static/dependency gates and real-empty/
+  isolated-nonempty desktop/390px browser smoke. A readable backup preceded
+  the additive real migration; 6 observations and 1 dashboard were unchanged.
+
 ### M10 — Auditable refresh scheduling (2026-08-10)
 
 - Added migrations `0010_v2_refresh_scheduler` and

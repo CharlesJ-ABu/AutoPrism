@@ -6,6 +6,7 @@ from app.api.v2.insights import router as insights_router
 from app.api.v2.dashboards import router as dashboards_router
 from app.api.v2.sources import router as sources_router
 from app.api.v2.verification import router as verification_router
+from app.api.v2.research import router as research_router
 
 
 router = APIRouter()
@@ -19,3 +20,4 @@ router.include_router(
     prefix="/verification",
     tags=["V2 Verification"],
 )
+router.include_router(research_router, prefix="/research", tags=["V2 Research"])
